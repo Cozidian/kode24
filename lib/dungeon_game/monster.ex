@@ -22,7 +22,7 @@ defmodule DungeonGame.Monster do
     - `:steal_potion` — steals a potion from the player (no direct damage)
   """
 
-  defstruct [:name, :hp, :max_hp, :damage, :armor_class, :actions]
+  defstruct [:name, :hp, :max_hp, :damage, :armor_class, :actions, :next_action]
 
   @types [
     %{
@@ -73,6 +73,7 @@ defmodule DungeonGame.Monster do
 
   @doc """
   Spawns a monster scaled to the given `round` number.
+  The monster's first intended action is pre-selected and stored in `next_action`.
   """
   @spec for_round(pos_integer()) :: %__MODULE__{}
   def for_round(round) do
@@ -86,7 +87,26 @@ defmodule DungeonGame.Monster do
       max_hp: hp,
       damage: type.damage,
       armor_class: type.armor_class,
-      actions: type.actions
+      actions: type.actions,
+      next_action: pick_action(type.actions)
     }
+  end
+
+  @doc """
+  Randomly picks one action from `actions` using weighted selection.
+  Used externally to refresh a monster's `next_action` after each turn.
+  """
+  @spec pick_action([map()]) :: map()
+  def pick_action(actions) do
+    total = Enum.sum(Enum.map(actions, & &1.weight))
+    roll = :rand.uniform(total)
+
+    Enum.reduce_while(actions, roll, fn action, remaining ->
+      if remaining <= action.weight do
+        {:halt, action}
+      else
+        {:cont, remaining - action.weight}
+      end
+    end)
   end
 end

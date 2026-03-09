@@ -11,7 +11,7 @@ defmodule DungeonGame.Combat do
   the injectable `roller` remains reserved for hit/damage rolls.
   """
 
-  alias DungeonGame.Dice
+  alias DungeonGame.{Dice, Monster}
 
   @type roller :: Dice.roller()
   @type combatant :: %{
@@ -126,24 +126,11 @@ defmodule DungeonGame.Combat do
   # Monster action system
   # ---------------------------------------------------------------------------
 
-  # Picks a random action from the monster's action list (weighted) and executes it.
+  # Uses the monster's pre-selected next_action (or picks randomly as fallback).
   # Returns {log_entries, updated_player, updated_monster}.
   defp monster_act(monster, player, roller) do
-    action = pick_action(monster.actions)
+    action = monster.next_action || Monster.pick_action(monster.actions)
     execute_action(action, monster, player, roller)
-  end
-
-  defp pick_action(actions) do
-    total = Enum.sum(Enum.map(actions, & &1.weight))
-    roll = :rand.uniform(total)
-
-    Enum.reduce_while(actions, roll, fn action, remaining ->
-      if remaining <= action.weight do
-        {:halt, action}
-      else
-        {:cont, remaining - action.weight}
-      end
-    end)
   end
 
   # Standard melee attack — uses the monster's own damage dice.

@@ -9,7 +9,7 @@ defmodule DungeonGame.CombatTest do
   # Forces a monster to only use the standard :attack action, making the roller
   # fully deterministic for hit/damage checks in tests.
   defp attack_only(monster) do
-    %{monster | actions: [%{name: "Attack", type: :attack, weight: 1}]}
+    %{monster | actions: [%{name: "Attack", type: :attack, weight: 1}], next_action: nil}
   end
 
   # A monster with negligible armor so any non-zero roll hits

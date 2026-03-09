@@ -97,6 +97,12 @@ defmodule DndWeb.GameLive do
               <div class="text-sm text-gray-400 mt-2">
                 AC: <span class="text-white font-bold">{@monster.armor_class}</span>
               </div>
+              <div :if={@phase == :fighting} class="mt-3 rounded-xl bg-yellow-950/60 border border-yellow-700/50 px-3 py-2 text-sm">
+                <span class="text-yellow-400 font-bold uppercase tracking-widest text-xs">Next move</span>
+                <div class="text-yellow-200 font-semibold mt-0.5">
+                  {intent_icon(@monster.next_action.type)} {@monster.next_action.name}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -189,6 +195,7 @@ defmodule DndWeb.GameLive do
 
     case Combat.tick(player, monster, action) do
       {:continue, player, monster, entries} ->
+        monster = %{monster | next_action: Monster.pick_action(monster.actions)}
         {:noreply, socket |> assign(player: player, monster: monster, turn: next_turn) |> put_log(log, entries)}
 
       {:monster_dead, player, _dead_monster, entries} ->
@@ -224,4 +231,10 @@ defmodule DndWeb.GameLive do
 
   defp hp_pct(_hp, 0), do: 0
   defp hp_pct(hp, max_hp), do: trunc(hp / max_hp * 100)
+
+  defp intent_icon(:attack), do: "⚔️"
+  defp intent_icon(:heavy_attack), do: "💥"
+  defp intent_icon(:ranged), do: "🏹"
+  defp intent_icon(:heal), do: "💚"
+  defp intent_icon(:steal_potion), do: "🪙"
 end
