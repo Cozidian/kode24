@@ -16,6 +16,7 @@ defmodule DndWeb.GameLive do
         player: nil,
         monster: nil,
         round: 0,
+        turn: 0,
         log: []
       )
 
@@ -48,9 +49,12 @@ defmodule DndWeb.GameLive do
 
       <%!-- Game board (fighting + game_over) --%>
       <div :if={@phase in [:fighting, :game_over]} class="w-full max-w-4xl space-y-6">
-        <div class="text-center">
+        <div class="text-center flex justify-center gap-4">
           <span class="bg-yellow-500 text-gray-950 font-bold text-2xl px-6 py-2 rounded-full">
             Round {@round}
+          </span>
+          <span class="bg-gray-700 text-gray-200 font-bold text-2xl px-6 py-2 rounded-full">
+            Turn {@turn}
           </span>
         </div>
 
@@ -170,6 +174,7 @@ defmodule DndWeb.GameLive do
         player: player,
         monster: monster,
         round: round,
+        turn: 0,
         log: ["A wild #{monster.name} appears!"]
       )
 
@@ -179,11 +184,12 @@ defmodule DndWeb.GameLive do
   @impl true
   def handle_event("player_action", %{"action" => action_str}, socket) do
     action = String.to_atom(action_str)
-    %{player: player, monster: monster, round: round, log: log} = socket.assigns
+    %{player: player, monster: monster, round: round, turn: turn, log: log} = socket.assigns
+    next_turn = turn + 1
 
     case Combat.tick(player, monster, action) do
       {:continue, player, monster, entries} ->
-        {:noreply, socket |> assign(player: player, monster: monster) |> put_log(log, entries)}
+        {:noreply, socket |> assign(player: player, monster: monster, turn: next_turn) |> put_log(log, entries)}
 
       {:monster_dead, player, _dead_monster, entries} ->
         next_round = round + 1
@@ -192,7 +198,7 @@ defmodule DndWeb.GameLive do
 
         socket =
           socket
-          |> assign(player: player, monster: next_monster, round: next_round)
+          |> assign(player: player, monster: next_monster, round: next_round, turn: 0)
           |> put_log(log, entries ++ [announce])
 
         {:noreply, socket}
@@ -200,7 +206,7 @@ defmodule DndWeb.GameLive do
       {:player_dead, player, monster, entries} ->
         socket =
           socket
-          |> assign(phase: :game_over, player: player, monster: monster)
+          |> assign(phase: :game_over, player: player, monster: monster, turn: next_turn)
           |> put_log(log, entries)
 
         {:noreply, socket}
