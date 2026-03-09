@@ -36,6 +36,11 @@ Player actions are sent as `phx-click="player_action"` with `phx-value-action="a
 
 **All new features must be developed TDD-style: write failing tests first, then implement, then refactor.** The red → green → refactor cycle is mandatory — never write implementation code before a covering test exists and fails for the right reason.
 
+Three project skills map directly to this cycle:
+- `/tdd` — scaffolds 3–5 failing tests for a new feature (red phase)
+- `/simplify` — reviews passing code for duplication and clarity (refactor phase)
+- `/precommit` — runs `mix precommit` as the final gate before finishing
+
 Tests use a deterministic roller helper `always(n)` (`fn _sides -> n end`) to force specific hit/damage outcomes. Common fixtures:
 
 - `fragile_monster/0` — AC 1, so any roll hits
