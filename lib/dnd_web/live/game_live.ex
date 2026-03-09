@@ -178,7 +178,7 @@ defmodule DndWeb.GameLive do
 
   @impl true
   def handle_event("player_action", %{"action" => action_str}, socket) do
-    action = String.to_existing_atom(action_str)
+    action = String.to_atom(action_str)
     %{player: player, monster: monster, round: round, log: log} = socket.assigns
 
     case Combat.tick(player, monster, action) do
