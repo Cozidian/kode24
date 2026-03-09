@@ -6,11 +6,17 @@ defmodule DungeonGame.CombatTest do
   # Roller helpers
   defp always(n), do: fn _sides -> n end
 
+  # Forces a monster to only use the standard :attack action, making the roller
+  # fully deterministic for hit/damage checks in tests.
+  defp attack_only(monster) do
+    %{monster | actions: [%{name: "Attack", type: :attack, weight: 1}]}
+  end
+
   # A monster with negligible armor so any non-zero roll hits
-  defp fragile_monster, do: %{Monster.for_round(1) | armor_class: 1}
+  defp fragile_monster, do: attack_only(%{Monster.for_round(1) | armor_class: 1})
 
   # A monster with so much HP it will never die in a single exchange
-  defp durable_monster, do: %{Monster.for_round(1) | hp: 1000, max_hp: 1000, armor_class: 1}
+  defp durable_monster, do: attack_only(%{Monster.for_round(1) | hp: 1000, max_hp: 1000, armor_class: 1})
 
   # A player with an impenetrable armor class
   defp fortress_player, do: %Player{armor_class: 21}
@@ -88,7 +94,7 @@ defmodule DungeonGame.CombatTest do
   describe "tick/4 — :attack" do
     test "returns :continue when both combatants survive the exchange" do
       player = fortress_player()
-      monster = %{Monster.for_round(1) | armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
 
       assert {:continue, _player, _monster, log} =
                Combat.tick(player, monster, :attack, always(1))
@@ -156,7 +162,7 @@ defmodule DungeonGame.CombatTest do
 
     test "log contains a defensive stance message" do
       player = fortress_player()
-      monster = %{Monster.for_round(1) | armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
 
       {:continue, _player, _monster, log} =
         Combat.tick(player, monster, :defend, always(1))
@@ -168,7 +174,7 @@ defmodule DungeonGame.CombatTest do
       # Player's base AC = 14; monster rolls 14 (would normally hit)
       # With defend bonus the effective AC = 19, so 14 misses
       player = %Player{hp: 50, armor_class: 14}
-      monster = %{Monster.for_round(1) | hp: 100, max_hp: 100, armor_class: 1}
+      monster = attack_only(%{Monster.for_round(1) | hp: 100, max_hp: 100, armor_class: 1})
 
       {:continue, result_player, _monster, log} =
         Combat.tick(player, monster, :defend, always(14))
@@ -189,7 +195,7 @@ defmodule DungeonGame.CombatTest do
 
     test "can still result in :player_dead if damage is lethal" do
       player = %Player{hp: 1, armor_class: 1}
-      monster = %{Monster.for_round(1) | armor_class: 1, damage: "1d4"}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 1, damage: "1d4"})
 
       assert {:player_dead, dead_player, _monster, _log} =
                Combat.tick(player, monster, :defend, always(20))
@@ -205,7 +211,7 @@ defmodule DungeonGame.CombatTest do
   describe "tick/4 — :heal" do
     test "restores HP by the dice roll amount" do
       player = %Player{hp: 50, max_hp: 100, potions: 2, armor_class: 21}
-      monster = %{Monster.for_round(1) | armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
 
       # always(2) → 2d4 with always(2) = 4 HP healed; monster misses (roll 2 < AC 21)
       {:continue, healed_player, _monster, _log} =
@@ -216,7 +222,7 @@ defmodule DungeonGame.CombatTest do
 
     test "hp does not exceed max_hp" do
       player = %Player{hp: 99, max_hp: 100, potions: 1, armor_class: 21}
-      monster = %{Monster.for_round(1) | armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
 
       {:continue, healed_player, _monster, _log} =
         Combat.tick(player, monster, :heal, always(4))
@@ -226,7 +232,7 @@ defmodule DungeonGame.CombatTest do
 
     test "decrements the potion count" do
       player = %Player{hp: 50, max_hp: 100, potions: 2, armor_class: 21}
-      monster = %{Monster.for_round(1) | armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
 
       {:continue, result_player, _monster, _log} =
         Combat.tick(player, monster, :heal, always(2))
@@ -236,7 +242,7 @@ defmodule DungeonGame.CombatTest do
 
     test "wasted turn and informative log when no potions remain" do
       player = %Player{hp: 50, max_hp: 100, potions: 0, armor_class: 21}
-      monster = %{Monster.for_round(1) | armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
 
       {:continue, result_player, _monster, log} =
         Combat.tick(player, monster, :heal, always(1))
@@ -247,7 +253,7 @@ defmodule DungeonGame.CombatTest do
 
     test "monster still attacks after the player heals" do
       player = %Player{hp: 50, max_hp: 100, potions: 1, armor_class: 1}
-      monster = %{Monster.for_round(1) | hp: 100, max_hp: 100, armor_class: 1, damage: "1d4"}
+      monster = attack_only(%{Monster.for_round(1) | hp: 100, max_hp: 100, armor_class: 1, damage: "1d4"})
 
       # always(4) → heals 8 HP (2d4), monster hits and deals 4 damage
       # net: 50 + 8 - 4 = 54
@@ -260,7 +266,7 @@ defmodule DungeonGame.CombatTest do
     test "can still result in :player_dead if monster's counter-attack is lethal" do
       # max_hp=2 caps the heal so the monster's always(20) damage still kills the player
       player = %Player{hp: 1, max_hp: 2, potions: 1, armor_class: 1}
-      monster = %{Monster.for_round(1) | armor_class: 1, damage: "1d6"}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 1, damage: "1d6"})
 
       assert {:player_dead, dead_player, _monster, _log} =
                Combat.tick(player, monster, :heal, always(20))
