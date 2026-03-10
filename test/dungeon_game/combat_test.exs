@@ -234,6 +234,28 @@ defmodule DungeonGame.CombatTest do
       assert rewarded_player.xp == 50
     end
 
+    test "player gains gold when the monster drops loot on death" do
+      # always(2): attack roll 2 >= AC 1 → hit, damage 2 > HP 1 → kill, loot roll 2 == 2 → drop
+      monster = %{fragile_monster() | hp: 1, xp: 0, gold: 5}
+      player  = %Player{damage: "1d4", gold: 0}
+
+      {:monster_dead, result_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(2))
+
+      assert result_player.gold == 5
+    end
+
+    test "player gains no gold when the monster drop roll fails" do
+      # always(1): attack roll 1 >= AC 1 → hit, damage 1 = HP 1 → kill, loot roll 1 != 2 → no drop
+      monster = %{fragile_monster() | hp: 1, xp: 0, gold: 5}
+      player  = %Player{damage: "1d4", gold: 0}
+
+      {:monster_dead, result_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(1))
+
+      assert result_player.gold == 0
+    end
+
     test "player xp does not change when the monster survives the round" do
       monster = durable_monster()
       player = %{fortress_player() | xp: 10}
@@ -346,6 +368,25 @@ defmodule DungeonGame.CombatTest do
                Combat.tick(player, monster, :heal, always(20))
 
       assert dead_player.hp == 0
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # tick/4 — item loot
+  # ---------------------------------------------------------------------------
+
+  describe "tick/4 — item loot" do
+    test "player receives an item in inventory when the monster drops one on death" do
+      # always(2): attack roll 2 >= AC 1 → hit, damage 2 > HP 1 → kill
+      # gold drop: 2 == 2 → drops; item drop: 2 == 2 → drops
+      monster = %{fragile_monster() | hp: 1, xp: 0, gold: 5}
+      player = %Player{damage: "1d4", gold: 0}
+
+      {:monster_dead, result_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(2))
+
+      assert length(result_player.inventory) == 1
+      assert is_map(hd(result_player.inventory))
     end
   end
 end

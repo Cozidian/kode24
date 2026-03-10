@@ -1,7 +1,7 @@
 defmodule DungeonGame.Player do
   @moduledoc "Represents the player character."
 
-  alias DungeonGame.Dice
+  alias DungeonGame.{Dice, Item}
 
   defstruct name: "Hero",
             hp: 20,
@@ -10,7 +10,13 @@ defmodule DungeonGame.Player do
             armor_class: 14,
             potions: 2,
             xp: 0,
-            level: 1
+            level: 1,
+            gold: 0,
+            inventory: [],
+            equipped_weapon: nil,
+            equipped_armor: nil,
+            bonus_damage: 0,
+            bonus_ac: 0
 
   @doc """
   Returns the level a player should be at for a given total XP.
@@ -52,5 +58,22 @@ defmodule DungeonGame.Player do
     else
       player
     end
+  end
+
+  @doc """
+  Equips an item, placing the previously equipped item of the same slot into inventory.
+
+  - `:weapon` → sets `equipped_weapon` and `bonus_damage`
+  - `:armor` / `:helm` → sets `equipped_armor` and `bonus_ac`
+  """
+  @spec equip(%__MODULE__{}, %Item{}) :: %__MODULE__{}
+  def equip(player, %Item{type: :weapon} = item) do
+    inventory = if player.equipped_weapon, do: [player.equipped_weapon | player.inventory], else: player.inventory
+    %{player | equipped_weapon: item, bonus_damage: item.bonus, inventory: inventory}
+  end
+
+  def equip(player, %Item{type: type} = item) when type in [:armor, :helm] do
+    inventory = if player.equipped_armor, do: [player.equipped_armor | player.inventory], else: player.inventory
+    %{player | equipped_armor: item, bonus_ac: item.bonus, inventory: inventory}
   end
 end

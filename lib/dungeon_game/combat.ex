@@ -11,7 +11,7 @@ defmodule DungeonGame.Combat do
   the injectable `roller` remains reserved for hit/damage rolls.
   """
 
-  alias DungeonGame.{Dice, Monster, Player}
+  alias DungeonGame.{Dice, Loot, Monster, Player}
 
   @type roller :: Dice.roller()
   @type combatant :: %{
@@ -31,9 +31,10 @@ defmodule DungeonGame.Combat do
   @spec attack(combatant(), combatant(), roller()) :: {:hit, pos_integer()} | :miss
   def attack(attacker, defender, roller \\ &:rand.uniform/1) do
     roll = roller.(20)
+    effective_ac = defender.armor_class + Map.get(defender, :bonus_ac, 0)
 
-    if roll >= defender.armor_class do
-      damage = Dice.roll(attacker.damage, roller)
+    if roll >= effective_ac do
+      damage = Dice.roll(attacker.damage, roller) + Map.get(attacker, :bonus_damage, 0)
       {:hit, damage}
     else
       :miss
@@ -76,9 +77,10 @@ defmodule DungeonGame.Combat do
     if not alive?(monster) do
       player = %{player | xp: player.xp + monster.xp}
       {player, level_up_log} = apply_level_up(player, roller)
+      {player, loot_log} = apply_loot(player, monster, roller)
 
       {:monster_dead, player, monster,
-       [player_log, "The #{monster.name} is defeated!"] ++ level_up_log}
+       [player_log, "The #{monster.name} is defeated!"] ++ level_up_log ++ loot_log}
     else
       {monster_logs, player, monster} = monster_act(monster, player, roller)
 
@@ -203,6 +205,18 @@ defmodule DungeonGame.Combat do
     else
       {leveled, []}
     end
+  end
+
+  # Rolls for all loot drops and applies each to the player.
+  # Returns {updated_player, log_entries}.
+  defp apply_loot(player, monster, roller) do
+    Enum.reduce(Loot.roll(monster, roller), {player, []}, fn
+      {:gold, amount}, {p, logs} ->
+        {%{p | gold: p.gold + amount}, logs ++ ["You found #{amount} gold!"]}
+
+      {:item, item}, {p, logs} ->
+        {%{p | inventory: [item | p.inventory]}, logs ++ ["You found a #{item.name}!"]}
+    end)
   end
 
   # Resolves a single attack and returns {log_entry, updated_defender}.

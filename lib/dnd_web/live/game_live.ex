@@ -86,6 +86,9 @@ defmodule DndWeb.GameLive do
               <div data-testid="player-xp" class="text-sm text-gray-400 mt-1">
                 ✨ XP: <span class="text-yellow-400 font-bold">{@player.xp}</span>
               </div>
+              <div data-testid="player-gold" class="text-sm text-gray-400 mt-1">
+                🪙 Gold: <span class="text-yellow-400 font-bold">{@player.gold}</span>
+              </div>
             </div>
           </div>
 
@@ -135,7 +138,7 @@ defmodule DndWeb.GameLive do
         </div>
 
         <%!-- Player action buttons --%>
-        <div :if={@phase == :fighting} class="grid grid-cols-3 gap-4">
+        <div :if={@phase == :fighting} class="grid grid-cols-4 gap-4">
           <button
             phx-click="player_action"
             phx-value-action="attack"
@@ -158,7 +161,76 @@ defmodule DndWeb.GameLive do
           >
             🧪 Heal ({@player.potions})
           </button>
+          <button
+            phx-click="open_inventory"
+            class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+          >
+            🎒 Bag ({length(@player.inventory)})
+          </button>
         </div>
+      </div>
+
+      <%!-- Inventory screen --%>
+      <div :if={@phase == :inventory} class="w-full max-w-4xl space-y-6">
+        <div class="text-center">
+          <h2 class="text-4xl font-bold text-purple-400">🎒 Inventory</h2>
+        </div>
+
+        <%!-- Equipped items --%>
+        <div class="grid grid-cols-2 gap-6">
+          <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">⚔️ Equipped Weapon</div>
+            <div :if={@player.equipped_weapon} class="text-lg font-bold text-white">
+              {@player.equipped_weapon.name}
+              <span class="text-green-400 ml-2">+{@player.equipped_weapon.bonus} damage</span>
+            </div>
+            <div :if={!@player.equipped_weapon} class="text-gray-500 italic">None</div>
+          </div>
+          <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">🛡️ Equipped Armor</div>
+            <div :if={@player.equipped_armor} class="text-lg font-bold text-white">
+              {@player.equipped_armor.name}
+              <span class="text-blue-400 ml-2">+{@player.equipped_armor.bonus} AC</span>
+            </div>
+            <div :if={!@player.equipped_armor} class="text-gray-500 italic">None</div>
+          </div>
+        </div>
+
+        <%!-- Unequipped items --%>
+        <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
+          <div class="text-sm text-gray-400 uppercase tracking-widest mb-4">Items in Bag</div>
+          <div :if={@player.inventory == []} class="text-gray-500 italic">Your bag is empty.</div>
+          <div class="space-y-3">
+            <div
+              :for={{item, idx} <- Enum.with_index(@player.inventory)}
+              class="flex items-center justify-between bg-gray-700 rounded-xl px-4 py-3"
+            >
+              <div>
+                <span class="font-bold text-white">{item.name}</span>
+                <span :if={item.type == :weapon} class="text-green-400 text-sm ml-2">
+                  +{item.bonus} damage
+                </span>
+                <span :if={item.type != :weapon} class="text-blue-400 text-sm ml-2">
+                  +{item.bonus} AC
+                </span>
+              </div>
+              <button
+                phx-click="equip_item"
+                phx-value-index={idx}
+                class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-sm px-4 py-2 rounded-lg transition-all cursor-pointer"
+              >
+                Equip
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button
+          phx-click="close_inventory"
+          class="w-full bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-bold text-xl py-4 rounded-2xl transition-all cursor-pointer shadow-lg"
+        >
+          ⚔️ Back to Battle
+        </button>
       </div>
 
       <%!-- Game over panel --%>
@@ -239,6 +311,25 @@ defmodule DndWeb.GameLive do
 
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("open_inventory", _params, socket) do
+    {:noreply, assign(socket, phase: :inventory)}
+  end
+
+  @impl true
+  def handle_event("close_inventory", _params, socket) do
+    {:noreply, assign(socket, phase: :fighting)}
+  end
+
+  @impl true
+  def handle_event("equip_item", %{"index" => idx_str}, socket) do
+    idx = String.to_integer(idx_str)
+    player = socket.assigns.player
+    item = Enum.at(player.inventory, idx)
+    player = player |> Map.update!(:inventory, &List.delete_at(&1, idx)) |> Player.equip(item)
+    {:noreply, assign(socket, player: player)}
   end
 
   # ---------------------------------------------------------------------------
