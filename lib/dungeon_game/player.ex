@@ -14,7 +14,9 @@ defmodule DungeonGame.Player do
             gold: 0,
             inventory: [],
             equipped_weapon: nil,
-            equipped_armor: nil,
+            equipped_helm: nil,
+            equipped_body: nil,
+            equipped_boots: nil,
             bonus_damage: 0,
             bonus_ac: 0
 
@@ -51,8 +53,8 @@ defmodule DungeonGame.Player do
       %{
         player
         | level: new_level,
-          hp: player.hp + bonus,
           max_hp: player.max_hp + bonus,
+          hp: player.max_hp + bonus,
           damage: damage
       }
     else
@@ -61,10 +63,13 @@ defmodule DungeonGame.Player do
   end
 
   @doc """
-  Equips an item, placing the previously equipped item of the same slot into inventory.
+  Equips an item into the appropriate slot, displacing the previous item (if any) into inventory.
+  `bonus_ac` is always recalculated from the sum of all three armor slot bonuses.
 
-  - `:weapon` → sets `equipped_weapon` and `bonus_damage`
-  - `:armor` / `:helm` → sets `equipped_armor` and `bonus_ac`
+  - `:weapon` → `equipped_weapon`, updates `bonus_damage`
+  - `:helm`   → `equipped_helm`, updates `bonus_ac`
+  - `:armor`  → `equipped_body`, updates `bonus_ac`
+  - `:boots`  → `equipped_boots`, updates `bonus_ac`
   """
   @spec equip(%__MODULE__{}, %Item{}) :: %__MODULE__{}
   def equip(player, %Item{type: :weapon} = item) do
@@ -76,22 +81,30 @@ defmodule DungeonGame.Player do
     }
   end
 
-  def equip(player, %Item{type: type} = item) when type in [:armor, :helm] do
-    %{
-      player
-      | equipped_armor: item,
-        bonus_ac: item.bonus,
-        inventory: List.wrap(player.equipped_armor) ++ player.inventory
-    }
+  def equip(player, %Item{type: :helm} = item) do
+    player = %{player | equipped_helm: item, inventory: List.wrap(player.equipped_helm) ++ player.inventory}
+    %{player | bonus_ac: calc_bonus_ac(player)}
+  end
+
+  def equip(player, %Item{type: :armor} = item) do
+    player = %{player | equipped_body: item, inventory: List.wrap(player.equipped_body) ++ player.inventory}
+    %{player | bonus_ac: calc_bonus_ac(player)}
+  end
+
+  def equip(player, %Item{type: :boots} = item) do
+    player = %{player | equipped_boots: item, inventory: List.wrap(player.equipped_boots) ++ player.inventory}
+    %{player | bonus_ac: calc_bonus_ac(player)}
   end
 
   @doc """
-  Unequips the item in the given slot, returning it to inventory and resetting the bonus.
+  Unequips the item in the given slot, returning it to inventory and recalculating `bonus_ac`.
 
   - `:weapon` → clears `equipped_weapon`, resets `bonus_damage` to 0
-  - `:armor`  → clears `equipped_armor`, resets `bonus_ac` to 0
+  - `:helm`   → clears `equipped_helm`, updates `bonus_ac`
+  - `:body`   → clears `equipped_body`, updates `bonus_ac`
+  - `:boots`  → clears `equipped_boots`, updates `bonus_ac`
   """
-  @spec unequip(%__MODULE__{}, :weapon | :armor) :: %__MODULE__{}
+  @spec unequip(%__MODULE__{}, :weapon | :helm | :body | :boots) :: %__MODULE__{}
   def unequip(player, :weapon) do
     %{
       player
@@ -101,12 +114,25 @@ defmodule DungeonGame.Player do
     }
   end
 
-  def unequip(player, :armor) do
-    %{
-      player
-      | equipped_armor: nil,
-        bonus_ac: 0,
-        inventory: List.wrap(player.equipped_armor) ++ player.inventory
-    }
+  def unequip(player, :helm) do
+    player = %{player | equipped_helm: nil, inventory: List.wrap(player.equipped_helm) ++ player.inventory}
+    %{player | bonus_ac: calc_bonus_ac(player)}
   end
+
+  def unequip(player, :body) do
+    player = %{player | equipped_body: nil, inventory: List.wrap(player.equipped_body) ++ player.inventory}
+    %{player | bonus_ac: calc_bonus_ac(player)}
+  end
+
+  def unequip(player, :boots) do
+    player = %{player | equipped_boots: nil, inventory: List.wrap(player.equipped_boots) ++ player.inventory}
+    %{player | bonus_ac: calc_bonus_ac(player)}
+  end
+
+  defp calc_bonus_ac(player) do
+    slot_bonus(player.equipped_helm) + slot_bonus(player.equipped_body) + slot_bonus(player.equipped_boots)
+  end
+
+  defp slot_bonus(nil), do: 0
+  defp slot_bonus(%Item{bonus: b}), do: b
 end

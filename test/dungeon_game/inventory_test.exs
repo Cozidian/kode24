@@ -15,13 +15,13 @@ defmodule DungeonGame.InventoryTest do
       assert weapon in result.inventory
     end
 
-    test "unequipping armor returns it to inventory and resets bonus_ac" do
+    test "unequipping body armor returns it to inventory and resets bonus_ac" do
       armor = %Item{type: :armor, name: "Chain Mail +2", bonus: 2}
-      player = %Player{equipped_armor: armor, bonus_ac: 2}
+      player = %Player{equipped_body: armor, bonus_ac: 2}
 
-      result = Player.unequip(player, :armor)
+      result = Player.unequip(player, :body)
 
-      assert result.equipped_armor == nil
+      assert result.equipped_body == nil
       assert result.bonus_ac == 0
       assert armor in result.inventory
     end
@@ -38,13 +38,13 @@ defmodule DungeonGame.InventoryTest do
       assert result.bonus_damage == 2
     end
 
-    test "equipping armor sets equipped_armor and bonus_ac" do
+    test "equipping body armor sets equipped_body and bonus_ac" do
       armor = %Item{type: :armor, name: "Chain Mail +1", bonus: 1}
       player = %Player{}
 
       result = Player.equip(player, armor)
 
-      assert result.equipped_armor == armor
+      assert result.equipped_body == armor
       assert result.bonus_ac == 1
     end
 
@@ -58,6 +58,67 @@ defmodule DungeonGame.InventoryTest do
       assert result.equipped_weapon == new_weapon
       assert result.bonus_damage == 3
       assert old_weapon in result.inventory
+    end
+  end
+
+  describe "three-slot armor system" do
+    test "equipping a helm sets equipped_helm and adds its bonus to bonus_ac" do
+      helm = %Item{type: :helm, name: "Iron Helm", bonus: 1}
+      player = %Player{}
+
+      result = Player.equip(player, helm)
+
+      assert result.equipped_helm == helm
+      assert result.bonus_ac == 1
+    end
+
+    test "equipping body armor sets equipped_body and adds its bonus to bonus_ac" do
+      armor = %Item{type: :armor, name: "Chain Mail", bonus: 2}
+      player = %Player{}
+
+      result = Player.equip(player, armor)
+
+      assert result.equipped_body == armor
+      assert result.bonus_ac == 2
+    end
+
+    test "equipping boots sets equipped_boots and adds its bonus to bonus_ac" do
+      boots = %Item{type: :boots, name: "Leather Boots", bonus: 1}
+      player = %Player{}
+
+      result = Player.equip(player, boots)
+
+      assert result.equipped_boots == boots
+      assert result.bonus_ac == 1
+    end
+
+    test "all three armor slots stack their bonuses in bonus_ac" do
+      helm  = %Item{type: :helm,  name: "Iron Helm",     bonus: 1}
+      armor = %Item{type: :armor, name: "Chain Mail",    bonus: 2}
+      boots = %Item{type: :boots, name: "Leather Boots", bonus: 1}
+
+      player =
+        %Player{}
+        |> Player.equip(helm)
+        |> Player.equip(armor)
+        |> Player.equip(boots)
+
+      assert player.bonus_ac == 4
+    end
+
+    test "unequipping body armor removes only its bonus, leaving other slots intact" do
+      helm  = %Item{type: :helm,  name: "Iron Helm",  bonus: 1}
+      armor = %Item{type: :armor, name: "Chain Mail", bonus: 2}
+
+      player =
+        %Player{}
+        |> Player.equip(helm)
+        |> Player.equip(armor)
+        |> Player.unequip(:body)
+
+      assert player.equipped_body == nil
+      assert player.bonus_ac == 1
+      assert armor in player.inventory
     end
   end
 end

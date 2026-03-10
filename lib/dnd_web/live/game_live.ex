@@ -177,7 +177,7 @@ defmodule DndWeb.GameLive do
         <%!-- Equipped items --%>
         <div class="grid grid-cols-2 gap-6">
           <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
-            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">⚔️ Equipped Weapon</div>
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">⚔️ Weapon</div>
             <div :if={@player.equipped_weapon} class="flex items-center justify-between">
               <div class="text-lg font-bold text-white">
                 {@player.equipped_weapon.name}
@@ -194,21 +194,55 @@ defmodule DndWeb.GameLive do
             <div :if={!@player.equipped_weapon} class="text-gray-500 italic">None</div>
           </div>
           <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
-            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">🛡️ Equipped Armor</div>
-            <div :if={@player.equipped_armor} class="flex items-center justify-between">
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">🪖 Helm</div>
+            <div :if={@player.equipped_helm} class="flex items-center justify-between">
               <div class="text-lg font-bold text-white">
-                {@player.equipped_armor.name}
-                <span class="text-blue-400 ml-2">+{@player.equipped_armor.bonus} AC</span>
+                {@player.equipped_helm.name}
+                <span class="text-blue-400 ml-2">+{@player.equipped_helm.bonus} AC</span>
               </div>
               <button
                 phx-click="unequip_item"
-                phx-value-slot="armor"
+                phx-value-slot="helm"
                 class="bg-gray-600 hover:bg-gray-500 active:scale-95 text-white font-bold text-sm px-3 py-1 rounded-lg transition-all cursor-pointer ml-3"
               >
                 Unequip
               </button>
             </div>
-            <div :if={!@player.equipped_armor} class="text-gray-500 italic">None</div>
+            <div :if={!@player.equipped_helm} class="text-gray-500 italic">None</div>
+          </div>
+          <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">🛡️ Body Armor</div>
+            <div :if={@player.equipped_body} class="flex items-center justify-between">
+              <div class="text-lg font-bold text-white">
+                {@player.equipped_body.name}
+                <span class="text-blue-400 ml-2">+{@player.equipped_body.bonus} AC</span>
+              </div>
+              <button
+                phx-click="unequip_item"
+                phx-value-slot="body"
+                class="bg-gray-600 hover:bg-gray-500 active:scale-95 text-white font-bold text-sm px-3 py-1 rounded-lg transition-all cursor-pointer ml-3"
+              >
+                Unequip
+              </button>
+            </div>
+            <div :if={!@player.equipped_body} class="text-gray-500 italic">None</div>
+          </div>
+          <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
+            <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">🥾 Boots</div>
+            <div :if={@player.equipped_boots} class="flex items-center justify-between">
+              <div class="text-lg font-bold text-white">
+                {@player.equipped_boots.name}
+                <span class="text-blue-400 ml-2">+{@player.equipped_boots.bonus} AC</span>
+              </div>
+              <button
+                phx-click="unequip_item"
+                phx-value-slot="boots"
+                class="bg-gray-600 hover:bg-gray-500 active:scale-95 text-white font-bold text-sm px-3 py-1 rounded-lg transition-all cursor-pointer ml-3"
+              >
+                Unequip
+              </button>
+            </div>
+            <div :if={!@player.equipped_boots} class="text-gray-500 italic">None</div>
           </div>
         </div>
 

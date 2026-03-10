@@ -4,8 +4,9 @@ defmodule DungeonGame.Item do
 
   Types:
     - `:weapon` — adds `bonus` to damage rolls
-    - `:armor`  — adds `bonus` to armor class
-    - `:helm`   — adds `bonus` to armor class (same slot as armor)
+    - `:armor`  — body armour slot, adds `bonus` to armor class
+    - `:helm`   — helm slot, adds `bonus` to armor class
+    - `:boots`  — boots slot, adds `bonus` to armor class
   """
 
   defstruct [:type, :name, :bonus]
@@ -13,13 +14,13 @@ defmodule DungeonGame.Item do
   @doc """
   Generates a random item using the injectable `roller`.
 
-  - `roller.(3)` selects the item type (1=weapon, 2=armor, 3=helm)
+  - `roller.(4)` selects the item type (1=weapon, 2=armor, 3=helm, 4=boots)
   - `roller.(3)` selects the bonus tier (1=+1, 2=+2, 3=+3)
   """
   @spec random(DungeonGame.Dice.roller()) :: %__MODULE__{}
   def random(roller) do
-    types = [:weapon, :armor, :helm]
-    type = Enum.at(types, roller.(3) - 1)
+    types = [:weapon, :armor, :helm, :boots]
+    type = Enum.at(types, roller.(4) - 1)
     Enum.at(pool()[type], roller.(3) - 1)
   end
 
@@ -39,6 +40,11 @@ defmodule DungeonGame.Item do
         %__MODULE__{type: :helm, name: "Iron Helm", bonus: 1},
         %__MODULE__{type: :helm, name: "Steel Helm", bonus: 2},
         %__MODULE__{type: :helm, name: "Dragon Helm", bonus: 3}
+      ],
+      boots: [
+        %__MODULE__{type: :boots, name: "Leather Boots", bonus: 1},
+        %__MODULE__{type: :boots, name: "Iron Boots", bonus: 2},
+        %__MODULE__{type: :boots, name: "Dragon Boots", bonus: 3}
       ]
     }
   end
