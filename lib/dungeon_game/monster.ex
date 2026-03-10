@@ -22,18 +22,19 @@ defmodule DungeonGame.Monster do
     - `:steal_potion` — steals a potion from the player (no direct damage)
   """
 
-  defstruct [:name, :hp, :max_hp, :damage, :armor_class, :actions, :next_action]
+  defstruct [:name, :hp, :max_hp, :damage, :armor_class, :actions, :next_action, xp: 0]
 
   @types [
     %{
       name: "Goblin",
-      base_hp: 12,
-      damage: "1d6",
+      base_hp: 6,
+      damage: "1d4",
       armor_class: 9,
+      xp: 10,
       actions: [
-        %{name: "Scratch",     type: :attack,       weight: 3},
-        %{name: "Throw Rock",  type: :ranged,       damage: "1d4", weight: 1},
-        %{name: "Pick Pocket", type: :steal_potion,              weight: 1}
+        %{name: "Scratch", type: :attack, weight: 3},
+        %{name: "Throw Rock", type: :ranged, damage: "1d4", weight: 1},
+        %{name: "Pick Pocket", type: :steal_potion, weight: 1}
       ]
     },
     %{
@@ -41,10 +42,11 @@ defmodule DungeonGame.Monster do
       base_hp: 25,
       damage: "1d8",
       armor_class: 11,
+      xp: 25,
       actions: [
-        %{name: "Cleave",        type: :attack,       weight: 3},
-        %{name: "Power Smash",   type: :heavy_attack, damage: "2d8", hit_penalty: 4, weight: 1},
-        %{name: "Brutish Shove", type: :ranged,       damage: "1d4", weight: 1}
+        %{name: "Cleave", type: :attack, weight: 3},
+        %{name: "Power Smash", type: :heavy_attack, damage: "2d8", hit_penalty: 4, weight: 1},
+        %{name: "Brutish Shove", type: :ranged, damage: "1d4", weight: 1}
       ]
     },
     %{
@@ -52,9 +54,10 @@ defmodule DungeonGame.Monster do
       base_hp: 45,
       damage: "2d6",
       armor_class: 13,
+      xp: 50,
       actions: [
-        %{name: "Slam",          type: :attack, weight: 3},
-        %{name: "Regenerate",    type: :heal,   amount: "1d8", weight: 1},
+        %{name: "Slam", type: :attack, weight: 3},
+        %{name: "Regenerate", type: :heal, amount: "1d8", weight: 1},
         %{name: "Boulder Throw", type: :ranged, damage: "1d10", weight: 1}
       ]
     },
@@ -63,10 +66,11 @@ defmodule DungeonGame.Monster do
       base_hp: 70,
       damage: "2d8",
       armor_class: 15,
+      xp: 100,
       actions: [
-        %{name: "Claw Strike", type: :attack,       weight: 3},
-        %{name: "Fire Breath", type: :ranged,       damage: "1d10", weight: 2},
-        %{name: "Tail Swipe",  type: :heavy_attack, damage: "3d6", hit_penalty: 3, weight: 1}
+        %{name: "Claw Strike", type: :attack, weight: 3},
+        %{name: "Fire Breath", type: :ranged, damage: "1d10", weight: 2},
+        %{name: "Tail Swipe", type: :heavy_attack, damage: "3d6", hit_penalty: 3, weight: 1}
       ]
     }
   ]
@@ -88,7 +92,8 @@ defmodule DungeonGame.Monster do
       damage: type.damage,
       armor_class: type.armor_class,
       actions: type.actions,
-      next_action: pick_action(type.actions)
+      next_action: pick_action(type.actions),
+      xp: type.xp
     }
   end
 

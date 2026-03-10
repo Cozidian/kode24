@@ -40,4 +40,28 @@ defmodule DungeonGame.MonsterTest do
       end
     end
   end
+
+  describe "xp" do
+    test "each monster type has a positive xp value" do
+      # Goblin
+      assert Monster.for_round(1).xp > 0
+      # Orc
+      assert Monster.for_round(4).xp > 0
+      # Troll
+      assert Monster.for_round(7).xp > 0
+      # Dragon
+      assert Monster.for_round(10).xp > 0
+    end
+
+    test "xp increases with monster tier: Goblin < Orc < Troll < Dragon" do
+      goblin_xp = Monster.for_round(1).xp
+      orc_xp = Monster.for_round(4).xp
+      troll_xp = Monster.for_round(7).xp
+      dragon_xp = Monster.for_round(10).xp
+
+      assert goblin_xp < orc_xp
+      assert orc_xp < troll_xp
+      assert troll_xp < dragon_xp
+    end
+  end
 end

@@ -11,7 +11,7 @@ defmodule DungeonGame.Combat do
   the injectable `roller` remains reserved for hit/damage rolls.
   """
 
-  alias DungeonGame.{Dice, Monster}
+  alias DungeonGame.{Dice, Monster, Player}
 
   @type roller :: Dice.roller()
   @type combatant :: %{
@@ -74,12 +74,17 @@ defmodule DungeonGame.Combat do
     {player_log, monster} = resolve_attack(player, monster, "You", monster.name, roller)
 
     if not alive?(monster) do
-      {:monster_dead, player, monster, [player_log, "The #{monster.name} is defeated!"]}
+      player = %{player | xp: player.xp + monster.xp}
+      {player, level_up_log} = apply_level_up(player, roller)
+
+      {:monster_dead, player, monster,
+       [player_log, "The #{monster.name} is defeated!"] ++ level_up_log}
     else
       {monster_logs, player, monster} = monster_act(monster, player, roller)
 
       if not alive?(player) do
-        {:player_dead, player, monster, [player_log] ++ monster_logs ++ ["You have been defeated!"]}
+        {:player_dead, player, monster,
+         [player_log] ++ monster_logs ++ ["You have been defeated!"]}
       else
         {:continue, player, monster, [player_log] ++ monster_logs}
       end
@@ -186,6 +191,19 @@ defmodule DungeonGame.Combat do
   # ---------------------------------------------------------------------------
   # Private helpers
   # ---------------------------------------------------------------------------
+
+  # Checks for a level-up after XP is awarded.
+  # Returns {updated_player, log_entries} — log is empty when no level-up occurred.
+  defp apply_level_up(player, roller) do
+    leveled = Player.apply_level_up(player, roller)
+
+    if leveled.level > player.level do
+      {leveled,
+       ["You reached level #{leveled.level}! +#{leveled.max_hp - player.max_hp} max HP!"]}
+    else
+      {leveled, []}
+    end
+  end
 
   # Resolves a single attack and returns {log_entry, updated_defender}.
   defp resolve_attack(attacker, defender, attacker_label, defender_label, roller) do

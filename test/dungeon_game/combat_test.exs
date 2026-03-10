@@ -16,7 +16,8 @@ defmodule DungeonGame.CombatTest do
   defp fragile_monster, do: attack_only(%{Monster.for_round(1) | armor_class: 1})
 
   # A monster with so much HP it will never die in a single exchange
-  defp durable_monster, do: attack_only(%{Monster.for_round(1) | hp: 1000, max_hp: 1000, armor_class: 1})
+  defp durable_monster,
+    do: attack_only(%{Monster.for_round(1) | hp: 1000, max_hp: 1000, armor_class: 1})
 
   # A player with an impenetrable armor class
   defp fortress_player, do: %Player{armor_class: 21}
@@ -114,7 +115,7 @@ defmodule DungeonGame.CombatTest do
     end
 
     test "monster does not attack when it is already dead" do
-      monster = %{fragile_monster() | hp: 1}
+      monster = %{fragile_monster() | hp: 1, xp: 0}
       player = %Player{hp: 1, damage: "1d6"}
 
       assert {:monster_dead, surviving_player, _monster, _log} =
@@ -208,6 +209,77 @@ defmodule DungeonGame.CombatTest do
   # tick/4 — :heal
   # ---------------------------------------------------------------------------
 
+  # ---------------------------------------------------------------------------
+  # tick/4 — XP reward
+  # ---------------------------------------------------------------------------
+
+  describe "tick/4 — XP reward" do
+    test "player gains the monster's xp when the killing blow lands" do
+      monster = %{fragile_monster() | hp: 1, xp: 50}
+      player = %Player{damage: "1d6", xp: 0}
+
+      {:monster_dead, rewarded_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(20))
+
+      assert rewarded_player.xp == 50
+    end
+
+    test "player xp accumulates across multiple kills" do
+      monster = %{fragile_monster() | hp: 1, xp: 30}
+      player = %Player{damage: "1d6", xp: 20}
+
+      {:monster_dead, rewarded_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(20))
+
+      assert rewarded_player.xp == 50
+    end
+
+    test "player xp does not change when the monster survives the round" do
+      monster = durable_monster()
+      player = %{fortress_player() | xp: 10}
+
+      {:continue, result_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(1))
+
+      assert result_player.xp == 10
+    end
+
+    test "player levels up when XP crosses the threshold after killing a monster" do
+      # Player at 9 XP; monster awards 1 XP → total 10 XP → level 2
+      monster = %{fragile_monster() | hp: 1, xp: 1}
+      player = %Player{damage: "1d6", xp: 9, level: 1}
+
+      {:monster_dead, leveled_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(20))
+
+      assert leveled_player.level == 2
+    end
+
+    test "damage dice upgrades to 1d6 when leveling up to level 3" do
+      # Player at 29 XP kills a monster worth 1 XP → 30 XP → level 3 → damage "1d6"
+      monster = %{fragile_monster() | hp: 1, xp: 1}
+      player = %Player{damage: "1d4", xp: 29, level: 2}
+
+      {:monster_dead, leveled_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(20))
+
+      assert leveled_player.damage == "1d6"
+    end
+
+    test "leveling up grants level * d6 bonus max_hp and current hp" do
+      # Player at 9 XP, 20/20 HP; kills a 1-XP monster → level 2
+      # always(3) means 2d6 = 6 bonus HP → 26/26
+      monster = %{fragile_monster() | hp: 1, xp: 1}
+      player = %Player{damage: "1d6", hp: 20, max_hp: 20, xp: 9, level: 1}
+
+      {:monster_dead, leveled_player, _monster, _log} =
+        Combat.tick(player, monster, :attack, always(3))
+
+      assert leveled_player.max_hp == 26
+      assert leveled_player.hp == 26
+    end
+  end
+
   describe "tick/4 — :heal" do
     test "restores HP by the dice roll amount" do
       player = %Player{hp: 50, max_hp: 100, potions: 2, armor_class: 21}
@@ -253,7 +325,9 @@ defmodule DungeonGame.CombatTest do
 
     test "monster still attacks after the player heals" do
       player = %Player{hp: 50, max_hp: 100, potions: 1, armor_class: 1}
-      monster = attack_only(%{Monster.for_round(1) | hp: 100, max_hp: 100, armor_class: 1, damage: "1d4"})
+
+      monster =
+        attack_only(%{Monster.for_round(1) | hp: 100, max_hp: 100, armor_class: 1, damage: "1d4"})
 
       # always(4) → heals 8 HP (2d4), monster hits and deals 4 damage
       # net: 50 + 8 - 4 = 54

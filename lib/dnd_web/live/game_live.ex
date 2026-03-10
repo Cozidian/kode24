@@ -34,7 +34,10 @@ defmodule DndWeb.GameLive do
       <h1 class="text-6xl font-bold mb-10 text-yellow-400 tracking-tight">⚔ Dungeon Crawler</h1>
 
       <%!-- Idle state --%>
-      <div :if={@phase == :idle} class="bg-gray-800 rounded-2xl p-12 text-center shadow-2xl w-full max-w-lg">
+      <div
+        :if={@phase == :idle}
+        class="bg-gray-800 rounded-2xl p-12 text-center shadow-2xl w-full max-w-lg"
+      >
         <Portraits.player class="w-32 h-40 mx-auto mb-6 drop-shadow-lg" />
         <p class="text-2xl text-gray-300 mb-8">
           Brave adventurer, do you dare enter the dungeon?
@@ -77,6 +80,12 @@ defmodule DndWeb.GameLive do
               <div class="text-sm text-gray-400 mt-2">
                 🧪 Potions: <span class="text-white font-bold">{@player.potions}</span>
               </div>
+              <div data-testid="player-level" class="text-sm text-gray-400 mt-1">
+                ⭐ Level: <span class="text-yellow-400 font-bold">{@player.level}</span>
+              </div>
+              <div data-testid="player-xp" class="text-sm text-gray-400 mt-1">
+                ✨ XP: <span class="text-yellow-400 font-bold">{@player.xp}</span>
+              </div>
             </div>
           </div>
 
@@ -97,8 +106,16 @@ defmodule DndWeb.GameLive do
               <div class="text-sm text-gray-400 mt-2">
                 AC: <span class="text-white font-bold">{@monster.armor_class}</span>
               </div>
-              <div :if={@phase == :fighting} class="mt-3 rounded-xl bg-yellow-950/60 border border-yellow-700/50 px-3 py-2 text-sm">
-                <span class="text-yellow-400 font-bold uppercase tracking-widest text-xs">Next move</span>
+              <div data-testid="monster-xp" class="text-sm text-gray-400 mt-1">
+                ✨ XP: <span class="text-yellow-400 font-bold">{@monster.xp}</span>
+              </div>
+              <div
+                :if={@phase == :fighting}
+                class="mt-3 rounded-xl bg-yellow-950/60 border border-yellow-700/50 px-3 py-2 text-sm"
+              >
+                <span class="text-yellow-400 font-bold uppercase tracking-widest text-xs">
+                  Next move
+                </span>
                 <div class="text-yellow-200 font-semibold mt-0.5">
                   {intent_icon(@monster.next_action.type)} {@monster.next_action.name}
                 </div>
@@ -124,7 +141,7 @@ defmodule DndWeb.GameLive do
             phx-value-action="attack"
             class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
-            ⚔️ Attack
+            ⚔️ Attack ({@player.damage})
           </button>
           <button
             phx-click="player_action"
@@ -196,7 +213,11 @@ defmodule DndWeb.GameLive do
     case Combat.tick(player, monster, action) do
       {:continue, player, monster, entries} ->
         monster = %{monster | next_action: Monster.pick_action(monster.actions)}
-        {:noreply, socket |> assign(player: player, monster: monster, turn: next_turn) |> put_log(log, entries)}
+
+        {:noreply,
+         socket
+         |> assign(player: player, monster: monster, turn: next_turn)
+         |> put_log(log, entries)}
 
       {:monster_dead, player, _dead_monster, entries} ->
         next_round = round + 1
