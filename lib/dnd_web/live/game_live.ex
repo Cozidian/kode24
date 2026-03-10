@@ -78,16 +78,14 @@ defmodule DndWeb.GameLive do
                 />
               </div>
               <div class="text-sm text-gray-400 mt-2">
-                🧪 Potions: <span class="text-white font-bold">{@player.potions}</span>
+                🛡️ AC: <span class="text-white font-bold">{@player.armor_class + @player.bonus_ac}</span>
               </div>
               <div data-testid="player-level" class="text-sm text-gray-400 mt-1">
                 ⭐ Level: <span class="text-yellow-400 font-bold">{@player.level}</span>
               </div>
               <div data-testid="player-xp" class="text-sm text-gray-400 mt-1">
                 ✨ XP: <span class="text-yellow-400 font-bold">{@player.xp}</span>
-              </div>
-              <div data-testid="player-gold" class="text-sm text-gray-400 mt-1">
-                🪙 Gold: <span class="text-yellow-400 font-bold">{@player.gold}</span>
+                <span class="text-gray-500 ml-1">({xp_to_next(@player)} to next)</span>
               </div>
             </div>
           </div>
@@ -144,7 +142,7 @@ defmodule DndWeb.GameLive do
             phx-value-action="attack"
             class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
-            ⚔️ Attack ({@player.damage})
+            ⚔️ Attack ({damage_label(@player)})
           </button>
           <button
             phx-click="player_action"
@@ -180,26 +178,53 @@ defmodule DndWeb.GameLive do
         <div class="grid grid-cols-2 gap-6">
           <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
             <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">⚔️ Equipped Weapon</div>
-            <div :if={@player.equipped_weapon} class="text-lg font-bold text-white">
-              {@player.equipped_weapon.name}
-              <span class="text-green-400 ml-2">+{@player.equipped_weapon.bonus} damage</span>
+            <div :if={@player.equipped_weapon} class="flex items-center justify-between">
+              <div class="text-lg font-bold text-white">
+                {@player.equipped_weapon.name}
+                <span class="text-green-400 ml-2">+{@player.equipped_weapon.bonus} damage</span>
+              </div>
+              <button
+                phx-click="unequip_item"
+                phx-value-slot="weapon"
+                class="bg-gray-600 hover:bg-gray-500 active:scale-95 text-white font-bold text-sm px-3 py-1 rounded-lg transition-all cursor-pointer ml-3"
+              >
+                Unequip
+              </button>
             </div>
             <div :if={!@player.equipped_weapon} class="text-gray-500 italic">None</div>
           </div>
           <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
             <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">🛡️ Equipped Armor</div>
-            <div :if={@player.equipped_armor} class="text-lg font-bold text-white">
-              {@player.equipped_armor.name}
-              <span class="text-blue-400 ml-2">+{@player.equipped_armor.bonus} AC</span>
+            <div :if={@player.equipped_armor} class="flex items-center justify-between">
+              <div class="text-lg font-bold text-white">
+                {@player.equipped_armor.name}
+                <span class="text-blue-400 ml-2">+{@player.equipped_armor.bonus} AC</span>
+              </div>
+              <button
+                phx-click="unequip_item"
+                phx-value-slot="armor"
+                class="bg-gray-600 hover:bg-gray-500 active:scale-95 text-white font-bold text-sm px-3 py-1 rounded-lg transition-all cursor-pointer ml-3"
+              >
+                Unequip
+              </button>
             </div>
             <div :if={!@player.equipped_armor} class="text-gray-500 italic">None</div>
+          </div>
+        </div>
+
+        <%!-- Gold --%>
+        <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
+          <div data-testid="player-gold" class="text-sm text-gray-400 uppercase tracking-widest">
+            🪙 Gold: <span class="text-yellow-400 font-bold text-base">{@player.gold}</span>
           </div>
         </div>
 
         <%!-- Unequipped items --%>
         <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
           <div class="text-sm text-gray-400 uppercase tracking-widest mb-4">Items in Bag</div>
-          <div :if={@player.inventory == []} class="text-gray-500 italic">Your bag is empty.</div>
+          <div :if={Enum.empty?(@player.inventory)} class="text-gray-500 italic">
+            Your bag is empty.
+          </div>
           <div class="space-y-3">
             <div
               :for={{item, idx} <- Enum.with_index(@player.inventory)}
@@ -324,6 +349,12 @@ defmodule DndWeb.GameLive do
   end
 
   @impl true
+  def handle_event("unequip_item", %{"slot" => slot}, socket) do
+    player = Player.unequip(socket.assigns.player, String.to_atom(slot))
+    {:noreply, assign(socket, player: player)}
+  end
+
+  @impl true
   def handle_event("equip_item", %{"index" => idx_str}, socket) do
     idx = String.to_integer(idx_str)
     player = socket.assigns.player
@@ -343,6 +374,14 @@ defmodule DndWeb.GameLive do
 
   defp hp_pct(_hp, 0), do: 0
   defp hp_pct(hp, max_hp), do: trunc(hp / max_hp * 100)
+
+  defp damage_label(%{damage: dice, bonus_damage: 0}), do: dice
+  defp damage_label(%{damage: dice, bonus_damage: bonus}), do: "(#{dice})+#{bonus}"
+
+  defp xp_to_next(%{level: level, xp: xp}) do
+    next_threshold = trunc(10 * (:math.pow(2, level) - 1))
+    max(0, next_threshold - xp)
+  end
 
   defp intent_icon(:attack), do: "⚔️"
   defp intent_icon(:heavy_attack), do: "💥"

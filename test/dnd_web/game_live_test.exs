@@ -22,10 +22,19 @@ defmodule DndWeb.GameLiveTest do
   end
 
   describe "gold visibility" do
-    test "player gold is shown on the game board after starting", %{conn: conn} do
+    test "player gold is NOT shown on the fighting phase HUD", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       view |> element("button[phx-click=start_game]") |> render_click()
+
+      refute has_element?(view, "[data-testid=player-gold]")
+    end
+
+    test "player gold is shown in the inventory screen", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      view |> element("button[phx-click=start_game]") |> render_click()
+      view |> element("button[phx-click=open_inventory]") |> render_click()
 
       assert has_element?(view, "[data-testid=player-gold]")
     end

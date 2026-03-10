@@ -13,7 +13,20 @@ defmodule DungeonGame.LootTest do
       result = Loot.roll(monster, always(2))
 
       assert {:gold, 5} in result
-      assert Enum.any?(result, fn {:item, _} -> true; _ -> false end)
+
+      assert Enum.any?(result, fn
+               {:item, _} -> true
+               _ -> false
+             end)
+    end
+
+    # always(2): potion roll 2 == 2 → drops (alongside gold and item)
+    test "includes a potion drop when the roll succeeds" do
+      monster = %{gold: 5}
+
+      result = Loot.roll(monster, always(2))
+
+      assert {:potion, 1} in result
     end
 
     # always(1): gold roll 1 != 2 → no drop; item roll 1 != 2 → no drop

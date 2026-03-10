@@ -68,12 +68,45 @@ defmodule DungeonGame.Player do
   """
   @spec equip(%__MODULE__{}, %Item{}) :: %__MODULE__{}
   def equip(player, %Item{type: :weapon} = item) do
-    inventory = if player.equipped_weapon, do: [player.equipped_weapon | player.inventory], else: player.inventory
-    %{player | equipped_weapon: item, bonus_damage: item.bonus, inventory: inventory}
+    %{
+      player
+      | equipped_weapon: item,
+        bonus_damage: item.bonus,
+        inventory: List.wrap(player.equipped_weapon) ++ player.inventory
+    }
   end
 
   def equip(player, %Item{type: type} = item) when type in [:armor, :helm] do
-    inventory = if player.equipped_armor, do: [player.equipped_armor | player.inventory], else: player.inventory
-    %{player | equipped_armor: item, bonus_ac: item.bonus, inventory: inventory}
+    %{
+      player
+      | equipped_armor: item,
+        bonus_ac: item.bonus,
+        inventory: List.wrap(player.equipped_armor) ++ player.inventory
+    }
+  end
+
+  @doc """
+  Unequips the item in the given slot, returning it to inventory and resetting the bonus.
+
+  - `:weapon` → clears `equipped_weapon`, resets `bonus_damage` to 0
+  - `:armor`  → clears `equipped_armor`, resets `bonus_ac` to 0
+  """
+  @spec unequip(%__MODULE__{}, :weapon | :armor) :: %__MODULE__{}
+  def unequip(player, :weapon) do
+    %{
+      player
+      | equipped_weapon: nil,
+        bonus_damage: 0,
+        inventory: List.wrap(player.equipped_weapon) ++ player.inventory
+    }
+  end
+
+  def unequip(player, :armor) do
+    %{
+      player
+      | equipped_armor: nil,
+        bonus_ac: 0,
+        inventory: List.wrap(player.equipped_armor) ++ player.inventory
+    }
   end
 end

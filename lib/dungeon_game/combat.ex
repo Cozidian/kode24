@@ -151,7 +151,9 @@ defmodule DungeonGame.Combat do
     roll = roller.(20)
     penalty = Map.get(action, :hit_penalty, 0)
 
-    if roll - penalty >= player.armor_class do
+    effective_ac = player.armor_class + Map.get(player, :bonus_ac, 0)
+
+    if roll - penalty >= effective_ac do
       damage = Dice.roll(action.damage, roller)
       player = apply_damage(player, damage)
       log = "The #{monster.name}'s #{action.name} connects for #{damage} damage!"
@@ -210,13 +212,19 @@ defmodule DungeonGame.Combat do
   # Rolls for all loot drops and applies each to the player.
   # Returns {updated_player, log_entries}.
   defp apply_loot(player, monster, roller) do
-    Enum.reduce(Loot.roll(monster, roller), {player, []}, fn
-      {:gold, amount}, {p, logs} ->
-        {%{p | gold: p.gold + amount}, logs ++ ["You found #{amount} gold!"]}
+    {player, logs} =
+      Enum.reduce(Loot.roll(monster, roller), {player, []}, fn
+        {:gold, amount}, {p, logs} ->
+          {%{p | gold: p.gold + amount}, ["You found #{amount} gold!" | logs]}
 
-      {:item, item}, {p, logs} ->
-        {%{p | inventory: [item | p.inventory]}, logs ++ ["You found a #{item.name}!"]}
-    end)
+        {:item, item}, {p, logs} ->
+          {%{p | inventory: [item | p.inventory]}, ["You found a #{item.name}!" | logs]}
+
+        {:potion, amount}, {p, logs} ->
+          {%{p | potions: p.potions + amount}, ["You found a potion!" | logs]}
+      end)
+
+    {player, Enum.reverse(logs)}
   end
 
   # Resolves a single attack and returns {log_entry, updated_defender}.
