@@ -375,6 +375,94 @@ defmodule DungeonGame.CombatTest do
   # tick/4 — item loot
   # ---------------------------------------------------------------------------
 
+  # ---------------------------------------------------------------------------
+  # act/4 — player main action (no monster counter-attack)
+  # ---------------------------------------------------------------------------
+
+  describe "act/4 — :attack" do
+    test "returns :monster_dead when the attack kills the monster, with no counter-attack" do
+      monster = %{fragile_monster() | hp: 1, xp: 0}
+      player = %Player{hp: 10, damage: "1d6"}
+
+      assert {:monster_dead, surviving_player, _monster, _log} =
+               Combat.act(player, monster, :attack, always(20))
+
+      assert surviving_player.hp == 10
+    end
+
+    test "returns :alive when both survive, without the monster having attacked" do
+      monster = durable_monster()
+      player = %Player{hp: 10}
+
+      assert {:alive, result_player, _monster, _log} =
+               Combat.act(player, monster, :attack, always(1))
+
+      assert result_player.hp == 10
+    end
+  end
+
+  describe "act/4 — :defend" do
+    test "marks the player as defending" do
+      player = %Player{}
+      monster = durable_monster()
+
+      {:alive, defending_player, _monster, _log} =
+        Combat.act(player, monster, :defend, always(1))
+
+      assert defending_player.defending == true
+    end
+
+    test "defend's +5 AC bonus blocks attacks in bonus/4 that would otherwise hit" do
+      # Base AC 14; monster rolls 14 → normally hits (14 >= 14)
+      # With defend +5 → effective AC 19 → miss (14 < 19)
+      player = %Player{hp: 50, armor_class: 14}
+      monster = durable_monster()
+
+      {:alive, defending_player, monster, _log} =
+        Combat.act(player, monster, :defend, always(14))
+
+      {:continue, result_player, _monster, log} =
+        Combat.bonus(defending_player, monster, :skip, always(14))
+
+      assert result_player.hp == 50
+      assert Enum.any?(log, &String.contains?(&1, "missed"))
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # bonus/4 — player bonus action (then monster counter-attacks)
+  # ---------------------------------------------------------------------------
+
+  describe "bonus/4 — :heal" do
+    test "restores hp by the dice roll amount, then monster attacks" do
+      player = %Player{hp: 50, max_hp: 100, potions: 2, armor_class: 21}
+      monster = attack_only(%{Monster.for_round(1) | armor_class: 21})
+
+      # always(2) → 2d4 = 4 HP healed; monster roll 2 < AC 21 → miss
+      {:continue, healed_player, _monster, _log} =
+        Combat.bonus(player, monster, :heal, always(2))
+
+      assert healed_player.hp == 54
+    end
+  end
+
+  describe "bonus/4 — :skip" do
+    test "skips healing and monster still counter-attacks" do
+      player = %Player{hp: 50, max_hp: 100, potions: 2, armor_class: 1}
+      monster = durable_monster()
+
+      # always(20) → monster hits
+      {:continue, result_player, _monster, _log} =
+        Combat.bonus(player, monster, :skip, always(20))
+
+      assert result_player.hp < 50
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # tick/4 — item loot
+  # ---------------------------------------------------------------------------
+
   describe "tick/4 — item loot" do
     test "player receives an item in inventory when the monster drops one on death" do
       # always(2): attack roll 2 >= AC 1 → hit, damage 2 > HP 1 → kill

@@ -93,8 +93,8 @@ defmodule DungeonGame.InventoryTest do
     end
 
     test "all three armor slots stack their bonuses in bonus_ac" do
-      helm  = %Item{type: :helm,  name: "Iron Helm",     bonus: 1}
-      armor = %Item{type: :armor, name: "Chain Mail",    bonus: 2}
+      helm = %Item{type: :helm, name: "Iron Helm", bonus: 1}
+      armor = %Item{type: :armor, name: "Chain Mail", bonus: 2}
       boots = %Item{type: :boots, name: "Leather Boots", bonus: 1}
 
       player =
@@ -107,7 +107,7 @@ defmodule DungeonGame.InventoryTest do
     end
 
     test "unequipping body armor removes only its bonus, leaving other slots intact" do
-      helm  = %Item{type: :helm,  name: "Iron Helm",  bonus: 1}
+      helm = %Item{type: :helm, name: "Iron Helm", bonus: 1}
       armor = %Item{type: :armor, name: "Chain Mail", bonus: 2}
 
       player =

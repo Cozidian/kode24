@@ -9,62 +9,72 @@
 │                     DndWeb.GameLive                             │
 │                   lib/dnd_web/live/game_live.ex                 │
 │                                                                 │
-│  assigns: phase, player, monster, round, turn, log             │
+│  assigns: phase, player, monster, round, turn, log              │
 │                                                                 │
 │  phases:  :idle ──► :fighting ──► :game_over                   │
 │                         │                                       │
-│  events:  start_game    │    player_action (attack/defend/heal) │
+│  events:  start_game    │  player_action (attack/defend/heal)   │
+│    open/close_inventory │                                       │
+│    equip/unequip_item   │                                       │
 └─────────────────────────┼───────────────────────────────────────┘
                           │  calls
           ┌───────────────┼───────────────┐
           ▼               ▼               ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│   Player     │  │   Monster    │  │   Combat     │
-│  player.ex   │  │  monster.ex  │  │  combat.ex   │
-│              │  │              │  │              │
-│ %Player{}    │  │ %Monster{}   │  │ tick/4       │
-│  name        │  │  name        │  │ attack/3     │
-│  hp          │  │  hp          │  │ apply_damage │
-│  max_hp      │  │  max_hp      │  │ alive?/1     │
-│  damage      │  │  damage      │  │              │
-│  armor_class │  │  armor_class │  │ returns:     │
-│  potions     │  │  actions     │  │ :continue    │
-│  xp          │  │  next_action │  │ :monster_dead│
-│  level       │  │  xp          │  │ :player_dead │
-│  gold        │  │  gold        │  └──────┬───────┘
-│              │  │              │         │ uses
-│ level_for_xp │  │ for_round/1  │  ┌──────┴───────┐
-│ apply_level  │  │ pick_action  │  │              │
-│   _up/2      │  │              │  │    Dice      │
-└──────────────┘  └──────────────┘  │   dice.ex    │
-                                    │              │
-                                    │ roll/2       │
-                                    │ "NdM" parser │
-                                    │ roller fn    │
-                                    └──────┬───────┘
-                                           │ also used by
-                                    ┌──────┴───────┐
-                                    │    Loot      │
-                                    │   loot.ex    │
-                                    │              │
-                                    │ roll/2       │
-                                    │ {:gold, amt} │
-                                    │ :nothing     │
-                                    └──────────────┘
+┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐
+│   Player     │  │   Monster    │  │         Combat           │
+│  player.ex   │  │  monster.ex  │  │        combat.ex         │
+│              │  │              │  │                          │
+│ %Player{}    │  │ %Monster{}   │  │  tick/4  (main API)      │
+│  name        │  │  name        │  │    :attack → hit/miss    │
+│  hp/max_hp   │  │  hp/max_hp   │  │    :defend → +5 AC       │
+│  damage      │  │  damage      │  │    :heal   → restore hp  │
+│  armor_class │  │  armor_class │  │  → monster counter-attack│
+│  potions     │  │  actions     │  │  returns:                │
+│  xp/level    │  │  next_action │  │    :monster_dead         │
+│  gold        │  │  xp/gold     │  │    :continue             │
+│  inventory   │  │              │  │    :player_dead          │
+│  equipped_*  │  │ for_round/1  │  │                          │
+│  bonus_*     │  │ pick_action  │  │  act/4   (internal)      │
+│  defending   │  │              │  │  bonus/4 (internal)      │
+│              │  │              │  └────────────┬─────────────┘
+│ xp_threshold │  │              │               │ uses
+│ level_for_xp │  │              │        ┌──────┴───────┐
+│ apply_level  │  │              │        │    Dice      │
+│   _up/2      │  │              │        │   dice.ex    │
+│ equip/2      │  │              │        │              │
+│ unequip/2    │  │              │        │ roll/2       │
+└──────────────┘  └──────────────┘        │ "NdM" parser │
+                                          │ roller fn    │
+                                          └──────┬───────┘
+                                                 │ also used by
+                              ┌──────────────────┴─────────┐
+                              │                            │
+                     ┌────────┴─────┐            ┌────────┴─────┐
+                     │    Loot      │            │     Item     │
+                     │   loot.ex    │            │   item.ex    │
+                     │              │            │              │
+                     │ roll/2       │            │ %Item{}      │
+                     │ {:gold, amt} │            │  type        │
+                     │ {:item, ...} │            │  name        │
+                     │ {:potion, 1} │            │  bonus       │
+                     └──────────────┘            │              │
+                                                 │ random/1     │
+                                                 └──────────────┘
 
-Data flow for a single turn:
-─────────────────────────────
-  1. User clicks Attack/Defend/Heal
+Turn flow (single action per turn):
+────────────────────────────────────
+  1. User clicks Attack / Defend / Heal
   2. GameLive.handle_event("player_action", ...)
   3. Combat.tick(player, monster, action, roller)
-       ├─ player acts   → Dice.roll + apply_damage
-       ├─ monster dies? → apply XP, apply_level_up, Loot.roll
-       └─ monster acts  → pick_action + execute_action
-  4. Pattern-match result tuple
-       ├─ {:continue, ...}     → update assigns, refresh next_action
-       ├─ {:monster_dead, ...} → spawn next monster (Monster.for_round)
+       ├─ :attack → player hits/misses monster
+       │    └─ monster dead? → XP, level_up, Loot.roll
+       ├─ :defend → player.defending = true (+5 AC for incoming attack)
+       └─ :heal   → player drinks potion (2d4 HP)
+       └─ monster counter-attacks (always, respects defending flag)
+  4. Pattern-match result
+       ├─ {:monster_dead, ...} → spawn next monster, reset turn
+       ├─ {:continue, ...}     → refresh next_action, increment turn
        └─ {:player_dead, ...}  → phase: :game_over
-  5. LiveView re-renders diff to browser
 
 Roller injection (testability):
 ─────────────────────────────
@@ -77,6 +87,8 @@ Roller injection (testability):
 
 Key architectural properties:
 - **No database** — all state lives in the LiveView process
-- **Pure core** — `Player`, `Monster`, `Combat`, `Dice`, `Loot` are stateless functional modules
+- **Pure core** — `Player`, `Monster`, `Combat`, `Dice`, `Loot`, `Item` are stateless functional modules
 - **Injected roller** — every function that rolls dice accepts a `roller` fn, keeping tests fully deterministic
-- **Monster intent** — `next_action` is pre-selected and stored on the monster struct so the UI can show it before the player acts; refreshed by `GameLive` after each turn, not inside `Combat`
+- **Single-action turns** — `tick/4` handles the player's action and the monster counter-attack in one call
+- **Monster intent** — `next_action` is pre-selected by `Monster.for_round` and refreshed by `GameLive` after each turn; the UI always shows what the monster plans to do next
+- **Defend carry-over** — `player.defending` is set inside `tick(:defend)` via `act/4` and consumed + cleared by `bonus/4` during the monster counter-attack within the same `tick` call

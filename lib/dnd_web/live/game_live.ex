@@ -1,7 +1,7 @@
 defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
-  alias DungeonGame.{Combat, Monster, Player}
+  alias DungeonGame.{Combat, Monster, Player, Upgrade}
   alias DndWeb.Portraits
 
   # ---------------------------------------------------------------------------
@@ -17,7 +17,9 @@ defmodule DndWeb.GameLive do
         monster: nil,
         round: 0,
         turn: 0,
-        log: []
+        log: [],
+        upgrade_choices: [],
+        pending_round: 0
       )
 
     {:ok, socket, layout: false}
@@ -78,7 +80,8 @@ defmodule DndWeb.GameLive do
                 />
               </div>
               <div class="text-sm text-gray-400 mt-2">
-                🛡️ AC: <span class="text-white font-bold">{@player.armor_class + @player.bonus_ac}</span>
+                🛡️ AC:
+                <span class="text-white font-bold">{@player.armor_class + @player.bonus_ac}</span>
               </div>
               <div data-testid="player-level" class="text-sm text-gray-400 mt-1">
                 ⭐ Level: <span class="text-yellow-400 font-bold">{@player.level}</span>
@@ -135,7 +138,7 @@ defmodule DndWeb.GameLive do
           </div>
         </div>
 
-        <%!-- Player action buttons --%>
+        <%!-- Action buttons --%>
         <div :if={@phase == :fighting} class="grid grid-cols-4 gap-4">
           <button
             phx-click="player_action"
@@ -292,6 +295,33 @@ defmodule DndWeb.GameLive do
         </button>
       </div>
 
+      <%!-- Level-up upgrade selection --%>
+      <div :if={@phase == :level_up} class="w-full max-w-4xl space-y-6">
+        <div class="text-center">
+          <h2 class="text-4xl font-bold text-yellow-400">⭐ Level Up!</h2>
+          <p class="text-xl text-gray-300 mt-2">Choose an upgrade</p>
+        </div>
+        <div class="grid grid-cols-3 gap-6">
+          <div
+            :for={upgrade <- @upgrade_choices}
+            class="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-600 hover:border-yellow-500 transition-all flex flex-col"
+          >
+            <div class="text-lg font-bold text-yellow-400 mb-1">
+              {upgrade_type_icon(upgrade.type)} {upgrade.name}
+            </div>
+            <div class="text-xs text-gray-500 uppercase tracking-widest mb-3">{upgrade.type}</div>
+            <p class="text-gray-200 text-sm flex-1">{upgrade.description}</p>
+            <button
+              phx-click="choose_upgrade"
+              phx-value-id={upgrade.id}
+              class="mt-4 w-full bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold py-2 rounded-xl transition-all cursor-pointer"
+            >
+              Choose
+            </button>
+          </div>
+        </div>
+      </div>
+
       <%!-- Game over panel --%>
       <div
         :if={@phase == :game_over}
@@ -339,37 +369,67 @@ defmodule DndWeb.GameLive do
   def handle_event("player_action", %{"action" => action_str}, socket) do
     action = String.to_atom(action_str)
     %{player: player, monster: monster, round: round, turn: turn, log: log} = socket.assigns
-    next_turn = turn + 1
 
     case Combat.tick(player, monster, action) do
-      {:continue, player, monster, entries} ->
-        monster = %{monster | next_action: Monster.pick_action(monster.actions)}
+      {:continue, new_player, new_monster, entries} ->
+        new_monster = %{new_monster | next_action: Monster.pick_action(new_monster.actions)}
 
         {:noreply,
          socket
-         |> assign(player: player, monster: monster, turn: next_turn)
+         |> assign(player: new_player, monster: new_monster, turn: turn + 1)
          |> put_log(log, entries)}
 
-      {:monster_dead, player, _dead_monster, entries} ->
+      {:monster_dead, new_player, _dead_monster, entries} ->
         next_round = round + 1
-        next_monster = Monster.for_round(next_round)
-        announce = "Round #{next_round}: A #{next_monster.name} appears!"
 
-        socket =
-          socket
-          |> assign(player: player, monster: next_monster, round: next_round, turn: 0)
-          |> put_log(log, entries ++ [announce])
+        if new_player.level > player.level do
+          choices = Upgrade.random_choices(new_player, 3)
 
-        {:noreply, socket}
+          {:noreply,
+           socket
+           |> assign(
+             phase: :level_up,
+             player: new_player,
+             upgrade_choices: choices,
+             pending_round: next_round
+           )
+           |> put_log(log, entries ++ ["⭐ Level #{new_player.level}! Choose an upgrade!"])}
+        else
+          next_monster = Monster.for_round(next_round)
+          announce = "Round #{next_round}: A #{next_monster.name} appears!"
 
-      {:player_dead, player, monster, entries} ->
-        socket =
-          socket
-          |> assign(phase: :game_over, player: player, monster: monster, turn: next_turn)
-          |> put_log(log, entries)
+          {:noreply,
+           socket
+           |> assign(player: new_player, monster: next_monster, round: next_round, turn: 0)
+           |> put_log(log, entries ++ [announce])}
+        end
 
-        {:noreply, socket}
+      {:player_dead, new_player, new_monster, entries} ->
+        {:noreply,
+         socket
+         |> assign(phase: :game_over, player: new_player, monster: new_monster, turn: turn + 1)
+         |> put_log(log, entries)}
     end
+  end
+
+  @impl true
+  def handle_event("choose_upgrade", %{"id" => id_str}, socket) do
+    upgrade = Enum.find(Upgrade.all(), &(to_string(&1.id) == id_str))
+    player = Upgrade.apply(socket.assigns.player, upgrade)
+    next_round = socket.assigns.pending_round
+    next_monster = Monster.for_round(next_round)
+    announce = "Round #{next_round}: A #{next_monster.name} appears!"
+
+    {:noreply,
+     socket
+     |> assign(
+       phase: :fighting,
+       player: player,
+       monster: next_monster,
+       round: next_round,
+       turn: 0
+     )
+     |> put_log(socket.assigns.log, [announce])}
   end
 
   @impl true
@@ -413,9 +473,13 @@ defmodule DndWeb.GameLive do
   defp damage_label(%{damage: dice, bonus_damage: bonus}), do: "(#{dice})+#{bonus}"
 
   defp xp_to_next(%{level: level, xp: xp}) do
-    next_threshold = trunc(10 * (:math.pow(2, level) - 1))
-    max(0, next_threshold - xp)
+    max(0, Player.xp_threshold(level + 1) - xp)
   end
+
+  defp upgrade_type_icon(:attack), do: "⚔️"
+  defp upgrade_type_icon(:defend), do: "🛡️"
+  defp upgrade_type_icon(:heal), do: "🧪"
+  defp upgrade_type_icon(:passive), do: "✨"
 
   defp intent_icon(:attack), do: "⚔️"
   defp intent_icon(:heavy_attack), do: "💥"

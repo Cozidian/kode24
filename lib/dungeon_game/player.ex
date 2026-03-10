@@ -18,20 +18,30 @@ defmodule DungeonGame.Player do
             equipped_body: nil,
             equipped_boots: nil,
             bonus_damage: 0,
-            bonus_ac: 0
+            bonus_ac: 0,
+            defending: false,
+            upgrade_attack: nil,
+            upgrade_defend: nil,
+            upgrade_heal: nil,
+            upgrades_passive: []
 
   @doc """
-  Returns the level a player should be at for a given total XP.
+  Returns the minimum XP required to reach `level`.
 
   Thresholds are cumulative: level 2 at 10 XP, level 3 at 30, level 4 at 70, level 5 at 150, …
   Each gap doubles: 10, 20, 40, 80, …
   Formula: threshold(n) = 10 * (2^(n-1) - 1)
   """
+  @spec xp_threshold(pos_integer()) :: non_neg_integer()
+  def xp_threshold(level), do: trunc(10 * (:math.pow(2, level - 1) - 1))
+
+  @doc """
+  Returns the level a player should be at for a given total XP.
+  """
   @spec level_for_xp(non_neg_integer()) :: pos_integer()
   def level_for_xp(xp) do
     Enum.reduce_while(2..100, 1, fn candidate, current ->
-      threshold = trunc(10 * (:math.pow(2, candidate - 1) - 1))
-      if xp >= threshold, do: {:cont, candidate}, else: {:halt, current}
+      if xp >= xp_threshold(candidate), do: {:cont, candidate}, else: {:halt, current}
     end)
   end
 
@@ -81,18 +91,10 @@ defmodule DungeonGame.Player do
     }
   end
 
-  def equip(player, %Item{type: :helm} = item) do
-    player = %{player | equipped_helm: item, inventory: List.wrap(player.equipped_helm) ++ player.inventory}
-    %{player | bonus_ac: calc_bonus_ac(player)}
-  end
-
-  def equip(player, %Item{type: :armor} = item) do
-    player = %{player | equipped_body: item, inventory: List.wrap(player.equipped_body) ++ player.inventory}
-    %{player | bonus_ac: calc_bonus_ac(player)}
-  end
-
-  def equip(player, %Item{type: :boots} = item) do
-    player = %{player | equipped_boots: item, inventory: List.wrap(player.equipped_boots) ++ player.inventory}
+  def equip(player, %Item{type: type} = item) when type in [:helm, :armor, :boots] do
+    field = armor_field(type)
+    old = Map.get(player, field)
+    player = struct!(player, [{field, item}, {:inventory, List.wrap(old) ++ player.inventory}])
     %{player | bonus_ac: calc_bonus_ac(player)}
   end
 
@@ -114,25 +116,25 @@ defmodule DungeonGame.Player do
     }
   end
 
-  def unequip(player, :helm) do
-    player = %{player | equipped_helm: nil, inventory: List.wrap(player.equipped_helm) ++ player.inventory}
-    %{player | bonus_ac: calc_bonus_ac(player)}
-  end
-
-  def unequip(player, :body) do
-    player = %{player | equipped_body: nil, inventory: List.wrap(player.equipped_body) ++ player.inventory}
-    %{player | bonus_ac: calc_bonus_ac(player)}
-  end
-
-  def unequip(player, :boots) do
-    player = %{player | equipped_boots: nil, inventory: List.wrap(player.equipped_boots) ++ player.inventory}
+  def unequip(player, slot) when slot in [:helm, :body, :boots] do
+    field = armor_field(slot)
+    old = Map.get(player, field)
+    player = struct!(player, [{field, nil}, {:inventory, List.wrap(old) ++ player.inventory}])
     %{player | bonus_ac: calc_bonus_ac(player)}
   end
 
   defp calc_bonus_ac(player) do
-    slot_bonus(player.equipped_helm) + slot_bonus(player.equipped_body) + slot_bonus(player.equipped_boots)
+    slot_bonus(player.equipped_helm) + slot_bonus(player.equipped_body) +
+      slot_bonus(player.equipped_boots)
   end
 
   defp slot_bonus(nil), do: 0
   defp slot_bonus(%Item{bonus: b}), do: b
+
+  # Maps item type or unequip slot atom to the corresponding struct field.
+  # :armor (item type) and :body (unequip slot) both refer to equipped_body.
+  defp armor_field(:helm), do: :equipped_helm
+  defp armor_field(:armor), do: :equipped_body
+  defp armor_field(:body), do: :equipped_body
+  defp armor_field(:boots), do: :equipped_boots
 end
