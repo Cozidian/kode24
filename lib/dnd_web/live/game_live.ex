@@ -20,7 +20,8 @@ defmodule DndWeb.GameLive do
         log: [],
         upgrade_choices: [],
         pending_round: 0,
-        highscores: Highscore.list()
+        highscores: Highscore.list(),
+        show_qr: false
       )
 
     {:ok, socket, layout: false}
@@ -333,6 +334,42 @@ defmodule DndWeb.GameLive do
         </div>
       </div>
 
+      <%!-- QR code fullscreen overlay --%>
+      <div
+        :if={@show_qr}
+        phx-click="toggle_qr"
+        class="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center cursor-pointer"
+      >
+        <p class="text-gray-400 text-sm mb-6 uppercase tracking-widest">Tap anywhere to close</p>
+        <img
+          src="https://api.qrserver.com/v1/create-qr-code/?data=https%3A%2F%2Fdnd-floral-paper-7223.fly.dev%2F&size=512x512&margin=2"
+          alt="QR code for the game"
+          class="w-72 h-72 sm:w-96 sm:h-96 rounded-2xl"
+        />
+        <p class="text-gray-300 text-lg mt-6 font-mono">dnd-floral-paper-7223.fly.dev</p>
+      </div>
+
+      <%!-- Fixed UI: QR button + GitHub link --%>
+      <div class="fixed bottom-4 right-4 z-40">
+        <button
+          phx-click="toggle_qr"
+          class="bg-gray-700 hover:bg-gray-600 active:scale-95 text-white text-sm font-bold px-3 py-2 rounded-xl transition-all cursor-pointer shadow-lg"
+          title="Show QR code"
+        >
+          📱 QR
+        </button>
+      </div>
+      <div class="fixed bottom-4 left-4 z-40">
+        <a
+          href="https://github.com/Cozidian/kode24"
+          target="_blank"
+          rel="noopener"
+          class="text-gray-600 hover:text-gray-400 text-xs font-mono transition-colors"
+        >
+          github
+        </a>
+      </div>
+
       <%!-- Game over panel --%>
       <div
         :if={@phase == :game_over}
@@ -384,6 +421,11 @@ defmodule DndWeb.GameLive do
   # ---------------------------------------------------------------------------
   # Event handlers
   # ---------------------------------------------------------------------------
+
+  @impl true
+  def handle_event("toggle_qr", _params, socket) do
+    {:noreply, assign(socket, show_qr: !socket.assigns.show_qr)}
+  end
 
   @impl true
   def handle_event("play_again", _params, socket) do
