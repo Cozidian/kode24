@@ -1,0 +1,9 @@
+.git
+.github
+_build
+deps
+doc
+test
+.env
+*.local
+priv/static/cache_manifest.json
