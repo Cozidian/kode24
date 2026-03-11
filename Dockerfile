@@ -2,13 +2,8 @@
 FROM hexpm/elixir:1.18.3-erlang-27.3-debian-bookworm-20250317-slim AS build
 
 RUN apt-get update -y && \
-    apt-get install -y build-essential wget git curl libsqlite3-dev && \
+    apt-get install -y build-essential git curl && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install litestream
-ARG LITESTREAM_VERSION=0.3.13
-RUN wget https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-amd64.deb \
-    && dpkg -i litestream-v${LITESTREAM_VERSION}-linux-amd64.deb
 
 WORKDIR /app
 
@@ -41,7 +36,7 @@ RUN mix release
 FROM debian:bookworm-slim AS app
 
 RUN apt-get update -y && \
-    apt-get install -y libstdc++6 openssl libncurses5 locales libsqlite3-0 && \
+    apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
@@ -56,16 +51,8 @@ RUN chown nobody /app
 
 COPY --from=build --chown=nobody:root /app/_build/prod/rel/dnd ./
 
-# Copy Litestream binary from build stage
-COPY --from=build /usr/bin/litestream /usr/bin/litestream
-COPY litestream.sh /app/bin/litestream.sh
-COPY config/litestream.yml /etc/litestream.yml
-
 USER nobody
 
 EXPOSE 8080
-
-# Run litestream script as entrypoint
-ENTRYPOINT ["/bin/bash", "/app/bin/litestream.sh"]
 
 CMD ["/app/bin/dnd", "start"]

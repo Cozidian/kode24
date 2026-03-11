@@ -9,8 +9,6 @@ defmodule Dnd.Application do
   def start(_type, _args) do
     children = [
       DndWeb.Telemetry,
-      Dnd.Repo,
-      {Ecto.Migrator, repos: Application.fetch_env!(:dnd, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:dnd, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Dnd.PubSub},
       DungeonGame.Highscore,
@@ -31,8 +29,4 @@ defmodule Dnd.Application do
     :ok
   end
 
-  defp skip_migrations?() do
-    # By default, sqlite migrations are run when using a release
-    System.get_env("RELEASE_NAME") == nil
-  end
 end

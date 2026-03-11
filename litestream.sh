@@ -6,9 +6,6 @@ if [ ! -f "$DATABASE_PATH" ] && [ -n "$BUCKET_NAME" ]; then
 	litestream restore -if-replica-exists "$DATABASE_PATH"
 fi
 
-# Migrate database
-/app/bin/migrate
-
 # Launch application
 if [ -n "$BUCKET_NAME" ]; then
 	litestream replicate -exec "${*}"
