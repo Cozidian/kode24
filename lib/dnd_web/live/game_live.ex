@@ -1,7 +1,7 @@
 defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
-  alias DungeonGame.{Combat, Monster, Player, Upgrade}
+  alias DungeonGame.{Combat, Highscore, Monster, Player, Upgrade}
   alias DndWeb.Portraits
 
   # ---------------------------------------------------------------------------
@@ -19,7 +19,8 @@ defmodule DndWeb.GameLive do
         turn: 0,
         log: [],
         upgrade_choices: [],
-        pending_round: 0
+        pending_round: 0,
+        highscores: Highscore.list()
       )
 
     {:ok, socket, layout: false}
@@ -44,12 +45,22 @@ defmodule DndWeb.GameLive do
         <p class="text-2xl text-gray-300 mb-8">
           Brave adventurer, do you dare enter the dungeon?
         </p>
-        <button
-          phx-click="start_game"
-          class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-2xl px-10 py-4 rounded-xl transition-all cursor-pointer"
-        >
-          Start Game
-        </button>
+        <.highscore_list entries={@highscores} class="mb-8 w-full" />
+        <form phx-submit="start_game" class="flex flex-col gap-4">
+          <input
+            name="username"
+            type="text"
+            placeholder="Enter your name"
+            required
+            class="bg-gray-700 text-gray-100 text-xl text-center px-6 py-3 rounded-xl border border-gray-600 focus:outline-none focus:border-yellow-400"
+          />
+          <button
+            type="submit"
+            class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-2xl px-10 py-4 rounded-xl transition-all cursor-pointer"
+          >
+            Start Game
+          </button>
+        </form>
       </div>
 
       <%!-- Game board (fighting + game_over) --%>
@@ -69,7 +80,7 @@ defmodule DndWeb.GameLive do
             <Portraits.player class="h-36 w-28 drop-shadow-lg" />
             <div class="w-full">
               <div class="text-sm text-gray-400 uppercase tracking-widest">🧙 Player</div>
-              <div class="text-3xl font-bold">{@player.name}</div>
+              <div class="text-3xl font-bold" data-testid="player-name">{@player.name}</div>
               <div class="text-lg text-gray-300 mt-1">
                 HP: <span class="font-bold text-white">{@player.hp} / {@player.max_hp}</span>
               </div>
@@ -331,8 +342,9 @@ defmodule DndWeb.GameLive do
         <p class="text-2xl text-gray-300 mb-6">
           You survived <span class="font-bold text-yellow-400">{@round}</span> round(s).
         </p>
+        <.highscore_list entries={@highscores} class="mt-6 mb-6" />
         <button
-          phx-click="start_game"
+          phx-click="play_again"
           class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-xl px-8 py-3 rounded-xl transition-all cursor-pointer"
         >
           Play Again
@@ -343,12 +355,55 @@ defmodule DndWeb.GameLive do
   end
 
   # ---------------------------------------------------------------------------
+  # Components
+  # ---------------------------------------------------------------------------
+
+  attr :entries, :list, required: true
+  attr :class, :string, default: nil
+
+  defp highscore_list(assigns) do
+    ~H"""
+    <div data-testid="highscore-list" class={"text-left #{@class}"}>
+      <h3 class="text-lg font-bold text-yellow-400 mb-3 text-center tracking-widest uppercase">
+        Hall of Fame
+      </h3>
+      <p :if={@entries == []} class="text-center text-gray-500 text-sm">No scores yet.</p>
+      <ol :if={@entries != []} class="space-y-1">
+        <li
+          :for={{entry, i} <- Enum.with_index(@entries, 1)}
+          class="flex justify-between text-gray-300 text-sm px-2 py-1 rounded bg-gray-700"
+        >
+          <span>{i}. {entry.name}</span>
+          <span class="text-yellow-400">{entry.rounds} rounds</span>
+        </li>
+      </ol>
+    </div>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
   # Event handlers
   # ---------------------------------------------------------------------------
 
   @impl true
-  def handle_event("start_game", _params, socket) do
-    player = %Player{}
+  def handle_event("play_again", _params, socket) do
+    {:noreply,
+     assign(socket,
+       phase: :idle,
+       player: nil,
+       monster: nil,
+       round: 0,
+       turn: 0,
+       log: [],
+       upgrade_choices: [],
+       pending_round: 0,
+       highscores: Highscore.list()
+     )}
+  end
+
+  @impl true
+  def handle_event("start_game", %{"username" => username}, socket) do
+    player = %Player{name: String.trim(username)}
     round = 1
     monster = Monster.for_round(round)
 
@@ -405,9 +460,17 @@ defmodule DndWeb.GameLive do
         end
 
       {:player_dead, new_player, new_monster, entries} ->
+        highscores = Highscore.add(new_player.name, round)
+
         {:noreply,
          socket
-         |> assign(phase: :game_over, player: new_player, monster: new_monster, turn: turn + 1)
+         |> assign(
+           phase: :game_over,
+           player: new_player,
+           monster: new_monster,
+           turn: turn + 1,
+           highscores: highscores
+         )
          |> put_log(log, entries)}
     end
   end

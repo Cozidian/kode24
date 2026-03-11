@@ -13,9 +13,7 @@ defmodule Dnd.Application do
       {Ecto.Migrator, repos: Application.fetch_env!(:dnd, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:dnd, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Dnd.PubSub},
-      # Start a worker by calling: Dnd.Worker.start_link(arg)
-      # {Dnd.Worker, arg},
-      # Start to serve requests, typically the last entry
+      DungeonGame.Highscore,
       DndWeb.Endpoint
     ]
 
