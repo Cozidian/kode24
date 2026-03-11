@@ -1,17 +1,17 @@
-# fly.toml app configuration file generated for dnd-floral-paper-7223 on 2026-03-11T22:41:58+01:00
+# fly.toml app configuration file generated for kode24 on 2026-03-11T21:48:57Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'dnd-floral-paper-7223'
-primary_region = 'arn'
+app = 'kode24'
+primary_region = 'iad'
 kill_signal = 'SIGTERM'
 
 [build]
 
 [env]
   DATABASE_PATH = '/mnt/name/name.db'
-  PHX_HOST = 'dnd-floral-paper-7223.fly.dev'
+  PHX_HOST = 'kode24.fly.dev'
   PORT = '8080'
 
 [[mounts]]

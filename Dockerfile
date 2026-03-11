@@ -2,8 +2,13 @@
 FROM hexpm/elixir:1.18.3-erlang-27.3-debian-bookworm-20250317-slim AS build
 
 RUN apt-get update -y && \
-    apt-get install -y build-essential wget git curl libsqlite3-dev && \
+    apt-get install -y build-essential wget wget git curl libsqlite3-dev && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install litestream
+ARG LITESTREAM_VERSION=0.3.13
+RUN wget https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-amd64.deb \
+    && dpkg -i litestream-v${LITESTREAM_VERSION}-linux-amd64.deb
 
 # Install litestream
 ARG LITESTREAM_VERSION=0.3.13
@@ -60,6 +65,11 @@ COPY --from=build /usr/bin/litestream /usr/bin/litestream
 COPY litestream.sh /app/bin/litestream.sh
 COPY config/litestream.yml /etc/litestream.yml
 
+# Copy Litestream binary from build stage
+COPY --from=builder /usr/bin/litestream /usr/bin/litestream
+COPY litestream.sh /app/bin/litestream.sh
+COPY config/litestream.yml /etc/litestream.yml
+
 USER nobody
 
 EXPOSE 8080
@@ -67,4 +77,4 @@ EXPOSE 8080
 # Run litestream script as entrypoint
 ENTRYPOINT ["/bin/bash", "/app/bin/litestream.sh"]
 
-CMD ["/app/bin/dnd", "start"]
+CMD ["/bin/bash", "/app/bin/litestream.sh","/app/bin/dnd", "start"]
