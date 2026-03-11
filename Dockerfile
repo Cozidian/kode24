@@ -25,14 +25,15 @@ RUN mkdir config
 COPY config/config.exs config/prod.exs config/
 RUN mix deps.compile
 
-# Copy source and build assets
+# Copy source and compile app (generates phoenix-colocated for esbuild)
 COPY priv priv
 COPY lib lib
 COPY assets assets
+RUN mix compile
+
+# Build assets (needs phoenix-colocated from _build)
 RUN mix assets.deploy
 
-# Compile app and build release
-RUN mix compile
 COPY config/runtime.exs config/
 RUN mix release
 
