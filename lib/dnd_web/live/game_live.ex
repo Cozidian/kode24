@@ -34,17 +34,17 @@ defmodule DndWeb.GameLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-8 font-mono select-none">
-      <h1 class="text-6xl font-bold mb-10 text-yellow-400 tracking-tight">⚔ Dungeon Crawler</h1>
+    <div class="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-3 sm:p-8 font-mono select-none">
+      <h1 class="text-3xl sm:text-6xl font-bold mb-4 sm:mb-10 text-yellow-400 tracking-tight">⚔ TDD Dungeon Crawler</h1>
 
       <%!-- Idle state --%>
       <div
         :if={@phase == :idle}
-        class="bg-gray-800 rounded-2xl p-12 text-center shadow-2xl w-full max-w-lg"
+        class="bg-gray-800 rounded-2xl p-6 sm:p-12 text-center shadow-2xl w-full max-w-lg"
       >
         <Portraits.player class="w-32 h-40 mx-auto mb-6 drop-shadow-lg" />
-        <p class="text-2xl text-gray-300 mb-8">
-          Brave adventurer, do you dare enter the dungeon?
+        <p class="text-lg sm:text-2xl text-gray-300 mb-5 sm:mb-8">
+          Brave TDD adventurer, do you dare enter the dungeon?
         </p>
         <.highscore_list entries={@highscores} class="mb-8 w-full" />
         <form phx-submit="start_game" class="flex flex-col gap-4">
@@ -57,7 +57,7 @@ defmodule DndWeb.GameLive do
           />
           <button
             type="submit"
-            class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-2xl px-10 py-4 rounded-xl transition-all cursor-pointer"
+            class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-lg sm:text-2xl px-6 sm:px-10 py-3 sm:py-4 rounded-xl transition-all cursor-pointer"
           >
             Start Game
           </button>
@@ -65,64 +65,64 @@ defmodule DndWeb.GameLive do
       </div>
 
       <%!-- Game board (fighting + game_over) --%>
-      <div :if={@phase in [:fighting, :game_over]} class="w-full max-w-4xl space-y-6">
-        <div class="text-center flex justify-center gap-4">
-          <span class="bg-yellow-500 text-gray-950 font-bold text-2xl px-6 py-2 rounded-full">
+      <div :if={@phase in [:fighting, :game_over]} class="w-full max-w-4xl space-y-3 sm:space-y-6">
+        <div class="text-center flex justify-center gap-3">
+          <span class="bg-yellow-500 text-gray-950 font-bold text-base sm:text-2xl px-4 sm:px-6 py-1 sm:py-2 rounded-full">
             Round {@round}
           </span>
-          <span class="bg-gray-700 text-gray-200 font-bold text-2xl px-6 py-2 rounded-full">
+          <span class="bg-gray-700 text-gray-200 font-bold text-base sm:text-2xl px-4 sm:px-6 py-1 sm:py-2 rounded-full">
             Turn {@turn}
           </span>
         </div>
 
         <%!-- Combatant cards --%>
-        <div class="grid grid-cols-2 gap-6">
-          <div class="bg-gray-800 rounded-2xl p-6 shadow-xl flex flex-col items-center gap-3">
-            <Portraits.player class="h-36 w-28 drop-shadow-lg" />
+        <div class="grid grid-cols-2 gap-2 sm:gap-6">
+          <div class="bg-gray-800 rounded-2xl p-3 sm:p-6 shadow-xl flex flex-col items-center gap-1 sm:gap-3">
+            <Portraits.player class="h-16 w-12 sm:h-36 sm:w-28 drop-shadow-lg" />
             <div class="w-full">
-              <div class="text-sm text-gray-400 uppercase tracking-widest">🧙 Player</div>
-              <div class="text-3xl font-bold" data-testid="player-name">{@player.name}</div>
-              <div class="text-lg text-gray-300 mt-1">
+              <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest">🧙 Player</div>
+              <div class="text-base sm:text-3xl font-bold truncate" data-testid="player-name">{@player.name}</div>
+              <div class="text-xs sm:text-lg text-gray-300 mt-1">
                 HP: <span class="font-bold text-white">{@player.hp} / {@player.max_hp}</span>
               </div>
-              <div class="w-full bg-gray-700 rounded-full h-5 mt-2 overflow-hidden">
+              <div class="w-full bg-gray-700 rounded-full h-2 sm:h-5 mt-2 overflow-hidden">
                 <div
-                  class="bg-green-500 h-5 rounded-full transition-all duration-500"
+                  class="bg-green-500 h-2 sm:h-5 rounded-full transition-all duration-500"
                   style={"width: #{hp_pct(@player.hp, @player.max_hp)}%"}
                 />
               </div>
-              <div class="text-sm text-gray-400 mt-2">
+              <div class="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
                 🛡️ AC:
                 <span class="text-white font-bold">{@player.armor_class + @player.bonus_ac}</span>
               </div>
-              <div data-testid="player-level" class="text-sm text-gray-400 mt-1">
-                ⭐ Level: <span class="text-yellow-400 font-bold">{@player.level}</span>
+              <div data-testid="player-level" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
+                ⭐ Lvl: <span class="text-yellow-400 font-bold">{@player.level}</span>
               </div>
-              <div data-testid="player-xp" class="text-sm text-gray-400 mt-1">
+              <div data-testid="player-xp" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
                 ✨ XP: <span class="text-yellow-400 font-bold">{@player.xp}</span>
-                <span class="text-gray-500 ml-1">({xp_to_next(@player)} to next)</span>
+                <span class="text-gray-500 hidden sm:inline ml-1">({xp_to_next(@player)} to next)</span>
               </div>
             </div>
           </div>
 
-          <div class="bg-gray-800 rounded-2xl p-6 shadow-xl flex flex-col items-center gap-3">
-            <Portraits.monster name={@monster.name} class="h-28 w-28 drop-shadow-lg" />
+          <div class="bg-gray-800 rounded-2xl p-3 sm:p-6 shadow-xl flex flex-col items-center gap-1 sm:gap-3">
+            <Portraits.monster name={@monster.name} class="h-16 w-16 sm:h-28 sm:w-28 drop-shadow-lg" />
             <div class="w-full">
-              <div class="text-sm text-gray-400 uppercase tracking-widest">👹 Monster</div>
-              <div class="text-3xl font-bold">{@monster.name}</div>
-              <div class="text-lg text-gray-300 mt-1">
+              <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest">👹 Monster</div>
+              <div class="text-base sm:text-3xl font-bold truncate">{@monster.name}</div>
+              <div class="text-xs sm:text-lg text-gray-300 mt-1">
                 HP: <span class="font-bold text-white">{@monster.hp} / {@monster.max_hp}</span>
               </div>
-              <div class="w-full bg-gray-700 rounded-full h-5 mt-2 overflow-hidden">
+              <div class="w-full bg-gray-700 rounded-full h-2 sm:h-5 mt-2 overflow-hidden">
                 <div
-                  class="bg-red-500 h-5 rounded-full transition-all duration-500"
+                  class="bg-red-500 h-2 sm:h-5 rounded-full transition-all duration-500"
                   style={"width: #{hp_pct(@monster.hp, @monster.max_hp)}%"}
                 />
               </div>
-              <div class="text-sm text-gray-400 mt-2">
+              <div class="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
                 AC: <span class="text-white font-bold">{@monster.armor_class}</span>
               </div>
-              <div data-testid="monster-xp" class="text-sm text-gray-400 mt-1">
+              <div data-testid="monster-xp" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
                 ✨ XP: <span class="text-yellow-400 font-bold">{@monster.xp}</span>
               </div>
               <div
@@ -141,28 +141,28 @@ defmodule DndWeb.GameLive do
         </div>
 
         <%!-- Combat log --%>
-        <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
-          <div class="text-sm text-gray-400 uppercase tracking-widest mb-4">Combat Log</div>
-          <div class="space-y-2 min-h-32">
-            <p :for={entry <- @log} class="text-lg text-gray-200 leading-snug">
+        <div class="bg-gray-800 rounded-2xl p-3 sm:p-6 shadow-xl">
+          <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest mb-2 sm:mb-4">Combat Log</div>
+          <div class="space-y-1 sm:space-y-2 min-h-20 sm:min-h-32">
+            <p :for={entry <- @log} class="text-sm sm:text-lg text-gray-200 leading-snug">
               › {entry}
             </p>
           </div>
         </div>
 
         <%!-- Action buttons --%>
-        <div :if={@phase == :fighting} class="grid grid-cols-4 gap-4">
+        <div :if={@phase == :fighting} class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
           <button
             phx-click="player_action"
             phx-value-action="attack"
-            class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+            class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
             ⚔️ Attack ({damage_label(@player)})
           </button>
           <button
             phx-click="player_action"
             phx-value-action="defend"
-            class="bg-blue-700 hover:bg-blue-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+            class="bg-blue-700 hover:bg-blue-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
             🛡️ Defend
           </button>
@@ -170,13 +170,13 @@ defmodule DndWeb.GameLive do
             phx-click="player_action"
             phx-value-action="heal"
             disabled={@player.potions == 0}
-            class="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            class="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             🧪 Heal ({@player.potions})
           </button>
           <button
             phx-click="open_inventory"
-            class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-xl py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+            class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
             🎒 Bag ({length(@player.inventory)})
           </button>
@@ -184,13 +184,13 @@ defmodule DndWeb.GameLive do
       </div>
 
       <%!-- Inventory screen --%>
-      <div :if={@phase == :inventory} class="w-full max-w-4xl space-y-6">
+      <div :if={@phase == :inventory} class="w-full max-w-4xl space-y-3 sm:space-y-6">
         <div class="text-center">
-          <h2 class="text-4xl font-bold text-purple-400">🎒 Inventory</h2>
+          <h2 class="text-2xl sm:text-4xl font-bold text-purple-400">🎒 Inventory</h2>
         </div>
 
         <%!-- Equipped items --%>
-        <div class="grid grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
           <div class="bg-gray-800 rounded-2xl p-6 shadow-xl">
             <div class="text-sm text-gray-400 uppercase tracking-widest mb-3">⚔️ Weapon</div>
             <div :if={@player.equipped_weapon} class="flex items-center justify-between">
@@ -308,12 +308,12 @@ defmodule DndWeb.GameLive do
       </div>
 
       <%!-- Level-up upgrade selection --%>
-      <div :if={@phase == :level_up} class="w-full max-w-4xl space-y-6">
+      <div :if={@phase == :level_up} class="w-full max-w-4xl space-y-3 sm:space-y-6">
         <div class="text-center">
-          <h2 class="text-4xl font-bold text-yellow-400">⭐ Level Up!</h2>
-          <p class="text-xl text-gray-300 mt-2">Choose an upgrade</p>
+          <h2 class="text-2xl sm:text-4xl font-bold text-yellow-400">⭐ Level Up!</h2>
+          <p class="text-base sm:text-xl text-gray-300 mt-2">Choose an upgrade</p>
         </div>
-        <div class="grid grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
           <div
             :for={upgrade <- @upgrade_choices}
             class="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-600 hover:border-yellow-500 transition-all flex flex-col"
@@ -373,10 +373,10 @@ defmodule DndWeb.GameLive do
       <%!-- Game over panel --%>
       <div
         :if={@phase == :game_over}
-        class="mt-8 bg-red-950 border border-red-600 rounded-2xl p-8 text-center w-full max-w-4xl"
+        class="mt-4 sm:mt-8 bg-red-950 border border-red-600 rounded-2xl p-4 sm:p-8 text-center w-full max-w-4xl"
       >
-        <h2 class="text-5xl font-bold text-red-400 mb-3">Game Over</h2>
-        <p class="text-2xl text-gray-300 mb-6">
+        <h2 class="text-3xl sm:text-5xl font-bold text-red-400 mb-3">Game Over</h2>
+        <p class="text-base sm:text-2xl text-gray-300 mb-4 sm:mb-6">
           You survived <span class="font-bold text-yellow-400">{@round}</span> round(s).
         </p>
         <.highscore_list entries={@highscores} class="mt-6 mb-6" />
