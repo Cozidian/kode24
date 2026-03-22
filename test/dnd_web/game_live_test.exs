@@ -3,62 +3,279 @@ defmodule DndWeb.GameLiveTest do
 
   import Phoenix.LiveViewTest
 
-  describe "XP visibility" do
-    test "player XP is shown on the game board after starting", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
+  # Starts the game and enters the :map phase.
+  defp start_game(view) do
+    view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+  end
 
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+  # Finds the node_id of the first available node of the given type from the
+  # rendered HTML. Available nodes have phx-value-node_id set (nil = omitted).
+  defp find_available_node_id(view, type) do
+    html = render(view)
+
+    case Regex.run(
+           ~r/data-node-type="#{type}"[^>]*phx-value-node_id="([^"]+)"/,
+           html
+         ) do
+      [_, id] -> id
+      nil -> nil
+    end
+  end
+
+  # From the :map phase, selects the first available fight node and enters combat.
+  # Fires the select_node event directly to avoid the single-element constraint of
+  # element/2 (the SVG may have many nodes matching the type selector).
+  # Retries if the first available node is a rest node (continues rest and tries again).
+  defp enter_fight(view) do
+    fight_id = find_available_node_id(view, "fight")
+    boss_id = find_available_node_id(view, "boss")
+    rest_id = find_available_node_id(view, "rest")
+
+    cond do
+      fight_id ->
+        render_click(view, "select_node", %{"node_id" => fight_id})
+
+      boss_id ->
+        render_click(view, "select_node", %{"node_id" => boss_id})
+
+      rest_id ->
+        render_click(view, "select_node", %{"node_id" => rest_id})
+        render_click(view, "rest_and_continue", %{})
+        enter_fight(view)
+
+      true ->
+        raise "No available nodes found in map"
+    end
+  end
+
+  # Attacks until the monster is dead (handling level-ups along the way),
+  # then returns :ok when back on the map.
+  defp win_fight(view) do
+    Enum.reduce_while(1..500, :ok, fn _, _ ->
+      cond do
+        has_element?(view, "[data-testid=dungeon-map]") ->
+          {:halt, :ok}
+
+        has_element?(view, "button[phx-click=choose_upgrade]") ->
+          render_click(view, "choose_upgrade", %{"id" => "tough"})
+          {:cont, :ok}
+
+        has_element?(view, "button[phx-value-action=attack]") ->
+          view |> element("button[phx-value-action=attack]") |> render_click()
+          {:cont, :ok}
+
+        true ->
+          {:halt, :ok}
+      end
+    end)
+  end
+
+  # ---------------------------------------------------------------------------
+  # Map phase
+  # ---------------------------------------------------------------------------
+
+  describe "map phase" do
+    test "start_game shows the dungeon map", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      assert has_element?(view, "[data-testid=dungeon-map]")
+    end
+
+    test "map contains fight and/or rest nodes", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      assert has_element?(view, "[data-testid=map-node]")
+    end
+
+    test "initially shows floor-0 nodes as available (clickable)", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      assert has_element?(view, "[data-testid=map-node][data-available]")
+    end
+
+    test "clicking a fight node enters the fighting phase", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+      enter_fight(view)
+
+      assert has_element?(view, "button[phx-value-action=attack]")
+    end
+
+    test "clicking a rest node shows the rest screen", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      case find_available_node_id(view, "rest") do
+        nil ->
+          :ok
+
+        rest_id ->
+          render_click(view, "select_node", %{"node_id" => rest_id})
+          assert has_element?(view, "[data-testid=rest-screen]")
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Rest node
+  # ---------------------------------------------------------------------------
+
+  describe "rest node" do
+    test "rest screen has a continue button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      case find_available_node_id(view, "rest") do
+        nil ->
+          :ok
+
+        rest_id ->
+          render_click(view, "select_node", %{"node_id" => rest_id})
+          assert has_element?(view, "button[phx-click=rest_and_continue]")
+      end
+    end
+
+    test "continuing from rest returns to the map", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      case find_available_node_id(view, "rest") do
+        nil ->
+          :ok
+
+        rest_id ->
+          render_click(view, "select_node", %{"node_id" => rest_id})
+          render_click(view, "rest_and_continue", %{})
+          assert has_element?(view, "[data-testid=dungeon-map]")
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Combat → map loop
+  # ---------------------------------------------------------------------------
+
+  describe "combat loop with map" do
+    test "winning a fight returns to the dungeon map", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+      enter_fight(view)
+      win_fight(view)
+
+      assert has_element?(view, "[data-testid=dungeon-map]")
+    end
+
+    test "player XP is shown during fighting phase", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+      enter_fight(view)
 
       assert has_element?(view, "[data-testid=player-xp]")
     end
 
-    test "monster XP reward is shown on the game board", %{conn: conn} do
+    test "monster XP reward is shown during fighting phase", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      start_game(view)
+      enter_fight(view)
 
       assert has_element?(view, "[data-testid=monster-xp]")
     end
+
+    test "player level is shown during fighting phase", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+      enter_fight(view)
+
+      assert has_element?(view, "[data-testid=player-level]")
+    end
+
+    test "inventory button is visible during fighting phase", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+      enter_fight(view)
+
+      assert has_element?(view, "button[phx-click=open_inventory]")
+    end
   end
+
+  # ---------------------------------------------------------------------------
+  # Gold and inventory
+  # ---------------------------------------------------------------------------
 
   describe "gold visibility" do
     test "player gold is NOT shown on the fighting phase HUD", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      start_game(view)
+      enter_fight(view)
 
       refute has_element?(view, "[data-testid=player-gold]")
     end
 
     test "player gold is shown in the inventory screen", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      start_game(view)
+      enter_fight(view)
       view |> element("button[phx-click=open_inventory]") |> render_click()
 
       assert has_element?(view, "[data-testid=player-gold]")
     end
   end
 
-  describe "level visibility" do
-    test "player level is shown on the game board after starting", %{conn: conn} do
+  # ---------------------------------------------------------------------------
+  # Victory
+  # ---------------------------------------------------------------------------
+
+  describe "victory" do
+    test "defeating the boss shows the victory screen", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+      # Jump directly to the boss fight (bypasses map navigation)
+      render_click(view, "select_node", %{"node_id" => "boss"})
+      # Set boss HP to 1 so one attack kills it
+      render_click(view, "__test_set_monster_hp", %{"hp" => "1"})
+      view |> element("button[phx-value-action=attack]") |> render_click()
 
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      # Handle possible level-up before asserting victory
+      if has_element?(view, "button[phx-click=choose_upgrade]") do
+        render_click(view, "choose_upgrade", %{"id" => "tough"})
+      end
 
-      assert has_element?(view, "[data-testid=player-level]")
+      assert has_element?(view, "h2", "Victory")
     end
   end
 
-  describe "inventory" do
-    test "inventory button is visible during the fighting phase", %{conn: conn} do
+  # ---------------------------------------------------------------------------
+  # Username entry
+  # ---------------------------------------------------------------------------
+
+  describe "username entry" do
+    test "idle screen shows a text input for the player's username", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      assert has_element?(view, "input[name=username]")
+    end
 
-      assert has_element?(view, "button[phx-click=open_inventory]")
+    test "submitting a username transitions to the map phase", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      start_game(view)
+
+      assert has_element?(view, "[data-testid=dungeon-map]")
+    end
+
+    test "player name appears in the map header", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Thorin"})
+
+      assert has_element?(view, "[data-testid=player-name-map]", "Thorin")
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Highscore display
+  # ---------------------------------------------------------------------------
 
   describe "highscore display" do
     setup do
@@ -88,10 +305,11 @@ defmodule DndWeb.GameLiveTest do
       DungeonGame.Highscore.add("Thorin", 5)
 
       {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      start_game(view)
+      enter_fight(view)
 
-      # Simulate combat until game_over — dismiss level-ups along the way
-      Enum.reduce_while(1..200, :ok, fn _, _ ->
+      # Attack until dead
+      Enum.reduce_while(1..500, :ok, fn _, _ ->
         cond do
           has_element?(view, "h2", "Game Over") ->
             {:halt, :done}
@@ -100,34 +318,25 @@ defmodule DndWeb.GameLiveTest do
             render_click(view, "choose_upgrade", %{"id" => "tough"})
             {:cont, :ok}
 
-          true ->
+          has_element?(view, "[data-testid=dungeon-map]") ->
+            enter_fight(view)
+            {:cont, :ok}
+
+          has_element?(view, "[data-testid=rest-screen]") ->
+            view |> element("button[phx-click=rest_and_continue]") |> render_click()
+            {:cont, :ok}
+
+          has_element?(view, "button[phx-value-action=attack]") ->
             view |> element("button[phx-value-action=attack]") |> render_click()
             {:cont, :ok}
+
+          true ->
+            {:halt, :stuck}
         end
       end)
 
       assert has_element?(view, "h2", "Game Over")
       assert has_element?(view, "[data-testid=highscore-list]")
-    end
-  end
-
-  describe "username entry" do
-    test "idle screen shows a text input for the player's username", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      assert has_element?(view, "input[name=username]")
-    end
-
-    test "submitting a username starts the game and shows the name on the player card", %{
-      conn: conn
-    } do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      view
-      |> element("form[phx-submit=start_game]")
-      |> render_submit(%{username: "Thorin"})
-
-      assert has_element?(view, "[data-testid=player-name]", "Thorin")
     end
   end
 end

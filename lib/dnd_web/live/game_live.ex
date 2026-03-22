@@ -1,7 +1,7 @@
 defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
-  alias DungeonGame.{Combat, Highscore, Monster, Player, Upgrade}
+  alias DungeonGame.{Combat, DungeonMap, Highscore, Monster, Player, Upgrade}
   alias DndWeb.Portraits
 
   # ---------------------------------------------------------------------------
@@ -15,11 +15,12 @@ defmodule DndWeb.GameLive do
         phase: :idle,
         player: nil,
         monster: nil,
-        round: 0,
+        dungeon_map: nil,
+        current_floor: 0,
         turn: 0,
         log: [],
         upgrade_choices: [],
-        pending_round: 0,
+        pending_floor: 0,
         highscores: Highscore.list(),
         show_qr: false
       )
@@ -35,7 +36,9 @@ defmodule DndWeb.GameLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-gray-950 text-gray-100 flex flex-col items-center justify-center p-3 sm:p-8 font-mono select-none">
-      <h1 class="text-3xl sm:text-6xl font-bold mb-4 sm:mb-10 text-yellow-400 tracking-tight">⚔ TDD Dungeon Crawler</h1>
+      <h1 class="text-3xl sm:text-6xl font-bold mb-4 sm:mb-10 text-yellow-400 tracking-tight">
+        ⚔ TDD Dungeon Crawler
+      </h1>
 
       <%!-- Idle state --%>
       <div
@@ -64,11 +67,50 @@ defmodule DndWeb.GameLive do
         </form>
       </div>
 
+      <%!-- Dungeon Map --%>
+      <div :if={@phase == :map} class="w-full max-w-2xl space-y-4">
+        <div class="text-center flex items-center justify-between px-2">
+          <span data-testid="player-name-map" class="text-yellow-400 font-bold text-lg">
+            {@player.name}
+          </span>
+          <span class="text-gray-400 text-sm">HP: {@player.hp}/{@player.max_hp}</span>
+        </div>
+
+        <div data-testid="dungeon-map" class="bg-gray-800 rounded-2xl p-4 shadow-xl">
+          <h2 class="text-center text-lg font-bold text-gray-300 mb-4 uppercase tracking-widest">
+            Dungeon Map
+          </h2>
+          <.dungeon_map_svg map={@dungeon_map} />
+        </div>
+
+        <p class="text-center text-gray-500 text-sm">Select a node to continue your journey</p>
+      </div>
+
+      <%!-- Rest screen --%>
+      <div :if={@phase == :rest} class="w-full max-w-lg" data-testid="rest-screen">
+        <div class="bg-gray-800 rounded-2xl p-8 shadow-xl text-center space-y-6">
+          <h2 class="text-3xl font-bold text-green-400">🏕 Rest Site</h2>
+          <p class="text-gray-300 text-lg">
+            You rest and recover. HP restored:
+            <span class="text-green-400 font-bold">{rest_heal_amount(@player)}</span>
+          </p>
+          <div class="text-gray-400">
+            HP: <span class="font-bold text-white">{@player.hp} / {@player.max_hp}</span>
+          </div>
+          <button
+            phx-click="rest_and_continue"
+            class="w-full bg-green-600 hover:bg-green-500 active:scale-95 text-white font-bold text-xl py-4 rounded-2xl transition-all cursor-pointer"
+          >
+            Continue →
+          </button>
+        </div>
+      </div>
+
       <%!-- Game board (fighting + game_over) --%>
       <div :if={@phase in [:fighting, :game_over]} class="w-full max-w-4xl space-y-3 sm:space-y-6">
         <div class="text-center flex justify-center gap-3">
           <span class="bg-yellow-500 text-gray-950 font-bold text-base sm:text-2xl px-4 sm:px-6 py-1 sm:py-2 rounded-full">
-            Round {@round}
+            Floor {@current_floor + 1}
           </span>
           <span class="bg-gray-700 text-gray-200 font-bold text-base sm:text-2xl px-4 sm:px-6 py-1 sm:py-2 rounded-full">
             Turn {@turn}
@@ -81,7 +123,9 @@ defmodule DndWeb.GameLive do
             <Portraits.player class="h-16 w-12 sm:h-36 sm:w-28 drop-shadow-lg" />
             <div class="w-full">
               <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest">🧙 Player</div>
-              <div class="text-base sm:text-3xl font-bold truncate" data-testid="player-name">{@player.name}</div>
+              <div class="text-base sm:text-3xl font-bold truncate" data-testid="player-name">
+                {@player.name}
+              </div>
               <div class="text-xs sm:text-lg text-gray-300 mt-1">
                 HP: <span class="font-bold text-white">{@player.hp} / {@player.max_hp}</span>
               </div>
@@ -100,7 +144,9 @@ defmodule DndWeb.GameLive do
               </div>
               <div data-testid="player-xp" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
                 ✨ XP: <span class="text-yellow-400 font-bold">{@player.xp}</span>
-                <span class="text-gray-500 hidden sm:inline ml-1">({xp_to_next(@player)} to next)</span>
+                <span class="text-gray-500 hidden sm:inline ml-1">
+                  ({xp_to_next(@player)} to next)
+                </span>
               </div>
             </div>
           </div>
@@ -142,7 +188,9 @@ defmodule DndWeb.GameLive do
 
         <%!-- Combat log --%>
         <div class="bg-gray-800 rounded-2xl p-3 sm:p-6 shadow-xl">
-          <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest mb-2 sm:mb-4">Combat Log</div>
+          <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest mb-2 sm:mb-4">
+            Combat Log
+          </div>
           <div class="space-y-1 sm:space-y-2 min-h-20 sm:min-h-32">
             <p :for={entry <- @log} class="text-sm sm:text-lg text-gray-200 leading-snug">
               › {entry}
@@ -334,6 +382,26 @@ defmodule DndWeb.GameLive do
         </div>
       </div>
 
+      <%!-- Victory screen --%>
+      <div :if={@phase == :victory} class="w-full max-w-lg text-center space-y-6">
+        <div class="bg-yellow-950 border border-yellow-500 rounded-2xl p-8 shadow-xl">
+          <h2 class="text-4xl sm:text-6xl font-bold text-yellow-400 mb-4">Victory!</h2>
+          <p class="text-xl text-gray-300 mb-2">
+            You defeated the dungeon boss!
+          </p>
+          <p class="text-gray-400">
+            {@player.name} — Level <span class="text-yellow-400 font-bold">{@player.level}</span>
+            — XP <span class="text-yellow-400 font-bold">{@player.xp}</span>
+          </p>
+        </div>
+        <button
+          phx-click="play_again"
+          class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-xl px-8 py-3 rounded-xl transition-all cursor-pointer"
+        >
+          Play Again
+        </button>
+      </div>
+
       <%!-- QR code fullscreen overlay --%>
       <div
         :if={@show_qr}
@@ -377,7 +445,7 @@ defmodule DndWeb.GameLive do
       >
         <h2 class="text-3xl sm:text-5xl font-bold text-red-400 mb-3">Game Over</h2>
         <p class="text-base sm:text-2xl text-gray-300 mb-4 sm:mb-6">
-          You survived <span class="font-bold text-yellow-400">{@round}</span> round(s).
+          You reached floor <span class="font-bold text-yellow-400">{@current_floor + 1}</span>.
         </p>
         <.highscore_list entries={@highscores} class="mt-6 mb-6" />
         <button
@@ -418,6 +486,70 @@ defmodule DndWeb.GameLive do
     """
   end
 
+  attr :map, DungeonMap, required: true
+
+  defp dungeon_map_svg(assigns) do
+    assigns =
+      assign(assigns,
+        available_ids:
+          assigns.map |> DungeonMap.available_nodes() |> Enum.map(& &1.id) |> MapSet.new()
+      )
+
+    ~H"""
+    <svg
+      viewBox="0 0 400 520"
+      xmlns="http://www.w3.org/2000/svg"
+      class="w-full max-w-sm mx-auto"
+      aria-label="Dungeon map"
+    >
+      <%!-- Connection lines --%>
+      <%= for node <- Map.values(@map.nodes), conn_id <- node.connections do %>
+        <% target = @map.nodes[conn_id] %>
+        <line
+          x1={node_x(node)}
+          y1={node_y(node)}
+          x2={node_x(target)}
+          y2={node_y(target)}
+          stroke="#4b5563"
+          stroke-width="2"
+        />
+      <% end %>
+
+      <%!-- Nodes --%>
+      <%= for node <- nodes_bottom_to_top(@map) do %>
+        <% available = MapSet.member?(@available_ids, node.id) %>
+        <% visited = node.id in @map.visited_ids %>
+        <% current = node.id == @map.current_node_id %>
+        <g
+          data-testid="map-node"
+          data-node-type={node.type}
+          data-available={available}
+          phx-click={if available, do: "select_node"}
+          phx-value-node_id={if available, do: node.id}
+          class={if available, do: "cursor-pointer", else: ""}
+          transform={"translate(#{node_x(node)}, #{node_y(node)})"}
+        >
+          <circle
+            r="22"
+            fill={node_fill(node.type, available, visited)}
+            stroke={if current, do: "#fbbf24", else: node_stroke(node.type, available)}
+            stroke-width={if current, do: "4", else: "2"}
+            opacity={if visited and not current, do: "0.4", else: "1"}
+          />
+          <text
+            text-anchor="middle"
+            dominant-baseline="central"
+            font-size="16"
+            opacity={if visited and not current, do: "0.4", else: "1"}
+          >
+            {node_icon(node.type)}
+          </text>
+        </g>
+      <% end %>
+    </svg>
+    """
+  end
+
   # ---------------------------------------------------------------------------
   # Event handlers
   # ---------------------------------------------------------------------------
@@ -434,11 +566,12 @@ defmodule DndWeb.GameLive do
        phase: :idle,
        player: nil,
        monster: nil,
-       round: 0,
+       dungeon_map: nil,
+       current_floor: 0,
        turn: 0,
        log: [],
        upgrade_choices: [],
-       pending_round: 0,
+       pending_floor: 0,
        highscores: Highscore.list()
      )}
   end
@@ -446,26 +579,65 @@ defmodule DndWeb.GameLive do
   @impl true
   def handle_event("start_game", %{"username" => username}, socket) do
     player = %Player{name: String.trim(username)}
-    round = 1
-    monster = Monster.for_round(round)
+    dungeon_map = DungeonMap.generate()
 
     socket =
       assign(socket,
-        phase: :fighting,
+        phase: :map,
         player: player,
-        monster: monster,
-        round: round,
+        dungeon_map: dungeon_map,
+        current_floor: 0,
         turn: 0,
-        log: ["A wild #{monster.name} appears!"]
+        log: []
       )
 
     {:noreply, socket}
   end
 
   @impl true
+  def handle_event("select_node", %{"node_id" => node_id}, socket) do
+    %{dungeon_map: map, player: player} = socket.assigns
+    node = map.nodes[node_id]
+    map = DungeonMap.visit(map, node_id)
+
+    case node.type do
+      :rest ->
+        healed_player = heal_player(player)
+
+        {:noreply,
+         assign(socket,
+           phase: :rest,
+           player: healed_player,
+           dungeon_map: map,
+           current_floor: node.floor
+         )}
+
+      fight_type when fight_type in [:fight, :boss] ->
+        monster = Monster.for_round(floor_to_round(node.floor))
+
+        {:noreply,
+         assign(socket,
+           phase: :fighting,
+           monster: monster,
+           dungeon_map: map,
+           current_floor: node.floor,
+           turn: 0,
+           log: ["A wild #{monster.name} appears!"]
+         )}
+    end
+  end
+
+  @impl true
+  def handle_event("rest_and_continue", _params, socket) do
+    {:noreply, assign(socket, phase: :map)}
+  end
+
+  @impl true
   def handle_event("player_action", %{"action" => action_str}, socket) do
     action = String.to_atom(action_str)
-    %{player: player, monster: monster, round: round, turn: turn, log: log} = socket.assigns
+
+    %{player: player, monster: monster, current_floor: floor, turn: turn, log: log} =
+      socket.assigns
 
     case Combat.tick(player, monster, action) do
       {:continue, new_player, new_monster, entries} ->
@@ -477,10 +649,11 @@ defmodule DndWeb.GameLive do
          |> put_log(log, entries)}
 
       {:monster_dead, new_player, _dead_monster, entries} ->
-        next_round = round + 1
+        current_node = DungeonMap.current_node(socket.assigns.dungeon_map)
 
         if new_player.level > player.level do
           choices = Upgrade.random_choices(new_player, 3)
+          after_fight_phase = if current_node.type == :boss, do: :victory, else: :map
 
           {:noreply,
            socket
@@ -488,21 +661,26 @@ defmodule DndWeb.GameLive do
              phase: :level_up,
              player: new_player,
              upgrade_choices: choices,
-             pending_round: next_round
+             pending_floor: floor,
+             pending_phase: after_fight_phase
            )
            |> put_log(log, entries ++ ["⭐ Level #{new_player.level}! Choose an upgrade!"])}
         else
-          next_monster = Monster.for_round(next_round)
-          announce = "Round #{next_round}: A #{next_monster.name} appears!"
-
-          {:noreply,
-           socket
-           |> assign(player: new_player, monster: next_monster, round: next_round, turn: 0)
-           |> put_log(log, entries ++ [announce])}
+          if current_node.type == :boss do
+            {:noreply,
+             socket
+             |> assign(phase: :victory, player: new_player)
+             |> put_log(log, entries ++ ["🎉 You defeated the boss!"])}
+          else
+            {:noreply,
+             socket
+             |> assign(phase: :map, player: new_player, monster: nil)
+             |> put_log(log, entries)}
+          end
         end
 
       {:player_dead, new_player, new_monster, entries} ->
-        highscores = Highscore.add(new_player.name, round)
+        highscores = Highscore.add(new_player.name, floor + 1)
 
         {:noreply,
          socket
@@ -521,20 +699,18 @@ defmodule DndWeb.GameLive do
   def handle_event("choose_upgrade", %{"id" => id_str}, socket) do
     upgrade = Enum.find(Upgrade.all(), &(to_string(&1.id) == id_str))
     player = Upgrade.apply(socket.assigns.player, upgrade)
-    next_round = socket.assigns.pending_round
-    next_monster = Monster.for_round(next_round)
-    announce = "Round #{next_round}: A #{next_monster.name} appears!"
+    after_phase = Map.get(socket.assigns, :pending_phase, :map)
 
-    {:noreply,
-     socket
-     |> assign(
-       phase: :fighting,
-       player: player,
-       monster: next_monster,
-       round: next_round,
-       turn: 0
-     )
-     |> put_log(socket.assigns.log, [announce])}
+    socket = assign(socket, player: player, upgrade_choices: [])
+
+    socket =
+      if after_phase == :victory do
+        assign(socket, phase: :victory)
+      else
+        assign(socket, phase: :map)
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -560,6 +736,14 @@ defmodule DndWeb.GameLive do
     item = Enum.at(player.inventory, idx)
     player = player |> Map.update!(:inventory, &List.delete_at(&1, idx)) |> Player.equip(item)
     {:noreply, assign(socket, player: player)}
+  end
+
+  if Mix.env() == :test do
+    @impl true
+    def handle_event("__test_set_monster_hp", %{"hp" => hp_str}, socket) do
+      monster = %{socket.assigns.monster | hp: String.to_integer(hp_str), armor_class: 1}
+      {:noreply, assign(socket, monster: monster)}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -591,4 +775,44 @@ defmodule DndWeb.GameLive do
   defp intent_icon(:ranged), do: "🏹"
   defp intent_icon(:heal), do: "💚"
   defp intent_icon(:steal_potion), do: "🪙"
+
+  # Map floor (0–5) to a monster round for scaling
+  # Floor 0→1, 1→3, 2→5, 3→7, 4→9, 5(boss)→11
+  defp floor_to_round(floor), do: floor * 2 + 1
+
+  # Heal player by 30% of max_hp, capped at max_hp
+  defp heal_player(%{hp: hp, max_hp: max_hp} = player) do
+    heal = max(1, trunc(max_hp * 0.3))
+    %{player | hp: min(max_hp, hp + heal)}
+  end
+
+  defp rest_heal_amount(%{max_hp: max_hp}), do: max(1, trunc(max_hp * 0.3))
+
+  # SVG layout helpers — floor 5 (boss) at top (y=40), floor 0 at bottom (y=480)
+  # Each floor is spaced 80px apart.
+  defp node_y(%{floor: floor}), do: 480 - floor * 80
+  defp node_x(%{floor: 5}), do: 200
+  defp node_x(%{position: pos}), do: 80 + pos * 120
+
+  defp nodes_bottom_to_top(%{nodes: nodes}) do
+    nodes |> Map.values() |> Enum.sort_by(& &1.floor)
+  end
+
+  defp node_fill(:boss, true, _), do: "#7c3aed"
+  defp node_fill(:boss, _, _), do: "#4c1d95"
+  defp node_fill(:fight, true, _), do: "#b91c1c"
+  defp node_fill(:fight, _, _), do: "#7f1d1d"
+  defp node_fill(:rest, true, _), do: "#15803d"
+  defp node_fill(:rest, _, _), do: "#14532d"
+
+  defp node_stroke(:boss, true), do: "#a78bfa"
+  defp node_stroke(:boss, _), do: "#7c3aed"
+  defp node_stroke(:fight, true), do: "#ef4444"
+  defp node_stroke(:fight, _), do: "#b91c1c"
+  defp node_stroke(:rest, true), do: "#4ade80"
+  defp node_stroke(:rest, _), do: "#16a34a"
+
+  defp node_icon(:boss), do: "💀"
+  defp node_icon(:fight), do: "⚔"
+  defp node_icon(:rest), do: "🏕"
 end

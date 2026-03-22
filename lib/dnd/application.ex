@@ -28,5 +28,4 @@ defmodule Dnd.Application do
     DndWeb.Endpoint.config_change(changed, removed)
     :ok
   end
-
 end
