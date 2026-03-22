@@ -2,7 +2,9 @@ defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
   alias DungeonGame.{Card, Combat, DungeonMap, Highscore, Monster, Player, PlayerClass}
-  alias DndWeb.Portraits
+  alias DndWeb.{GameComponents, Portraits}
+
+  import DndWeb.GameComponents, only: [card_icon: 1, intent_icon: 1, action_damage_text: 2]
 
   # ---------------------------------------------------------------------------
   # Lifecycle
@@ -51,7 +53,7 @@ defmodule DndWeb.GameLive do
         <p class="text-lg sm:text-2xl text-gray-300 mb-5 sm:mb-8">
           Brave TDD adventurer, do you dare enter the dungeon?
         </p>
-        <.highscore_list entries={@highscores} class="mb-8 w-full" />
+        <GameComponents.highscore_list entries={@highscores} class="mb-8 w-full" />
         <form phx-submit="start_game" class="flex flex-col gap-4">
           <input
             name="username"
@@ -112,7 +114,7 @@ defmodule DndWeb.GameLive do
           <h2 class="text-center text-lg font-bold text-gray-300 mb-4 uppercase tracking-widest">
             Dungeon Map
           </h2>
-          <.dungeon_map_svg map={@dungeon_map} />
+          <GameComponents.dungeon_map_svg map={@dungeon_map} />
         </div>
 
         <p class="text-center text-gray-500 text-sm">Select a node to continue your journey</p>
@@ -616,7 +618,7 @@ defmodule DndWeb.GameLive do
         <p class="text-base sm:text-2xl text-gray-300 mb-4 sm:mb-6">
           You reached floor <span class="font-bold text-yellow-400">{@current_floor + 1}</span>.
         </p>
-        <.highscore_list entries={@highscores} class="mt-6 mb-6" />
+        <GameComponents.highscore_list entries={@highscores} class="mt-6 mb-6" />
         <button
           phx-click="play_again"
           class="bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold text-xl px-8 py-3 rounded-xl transition-all cursor-pointer"
@@ -625,97 +627,6 @@ defmodule DndWeb.GameLive do
         </button>
       </div>
     </div>
-    """
-  end
-
-  # ---------------------------------------------------------------------------
-  # Components
-  # ---------------------------------------------------------------------------
-
-  attr :entries, :list, required: true
-  attr :class, :string, default: nil
-
-  defp highscore_list(assigns) do
-    ~H"""
-    <div data-testid="highscore-list" class={"text-left #{@class}"}>
-      <h3 class="text-lg font-bold text-yellow-400 mb-3 text-center tracking-widest uppercase">
-        Hall of Fame
-      </h3>
-      <p :if={@entries == []} class="text-center text-gray-500 text-sm">No scores yet.</p>
-      <ol :if={@entries != []} class="space-y-1">
-        <li
-          :for={{entry, i} <- Enum.with_index(@entries, 1)}
-          class="flex justify-between text-gray-300 text-sm px-2 py-1 rounded bg-gray-700"
-        >
-          <span>{i}. {entry.name}</span>
-          <span class="text-yellow-400">{entry.rounds} rounds</span>
-        </li>
-      </ol>
-    </div>
-    """
-  end
-
-  attr :map, DungeonMap, required: true
-
-  defp dungeon_map_svg(assigns) do
-    assigns =
-      assign(assigns,
-        available_ids:
-          assigns.map |> DungeonMap.available_nodes() |> Enum.map(& &1.id) |> MapSet.new()
-      )
-
-    ~H"""
-    <svg
-      viewBox="0 0 400 520"
-      xmlns="http://www.w3.org/2000/svg"
-      class="w-full max-w-sm mx-auto"
-      aria-label="Dungeon map"
-    >
-      <%!-- Connection lines --%>
-      <%= for node <- Map.values(@map.nodes), conn_id <- node.connections do %>
-        <% target = @map.nodes[conn_id] %>
-        <line
-          x1={node_x(node)}
-          y1={node_y(node)}
-          x2={node_x(target)}
-          y2={node_y(target)}
-          stroke="#4b5563"
-          stroke-width="2"
-        />
-      <% end %>
-
-      <%!-- Nodes --%>
-      <%= for node <- nodes_bottom_to_top(@map) do %>
-        <% available = MapSet.member?(@available_ids, node.id) %>
-        <% visited = node.id in @map.visited_ids %>
-        <% current = node.id == @map.current_node_id %>
-        <g
-          data-testid="map-node"
-          data-node-type={node.type}
-          data-available={available}
-          phx-click={if available, do: "select_node"}
-          phx-value-node_id={if available, do: node.id}
-          class={if available, do: "cursor-pointer", else: ""}
-          transform={"translate(#{node_x(node)}, #{node_y(node)})"}
-        >
-          <circle
-            r="22"
-            fill={node_fill(node.type, available, visited)}
-            stroke={if current, do: "#fbbf24", else: node_stroke(node.type, available)}
-            stroke-width={if current, do: "4", else: "2"}
-            opacity={if visited and not current, do: "0.4", else: "1"}
-          />
-          <text
-            text-anchor="middle"
-            dominant-baseline="central"
-            font-size="16"
-            opacity={if visited and not current, do: "0.4", else: "1"}
-          >
-            {node_icon(node.type)}
-          </text>
-        </g>
-      <% end %>
-    </svg>
     """
   end
 
@@ -995,33 +906,6 @@ defmodule DndWeb.GameLive do
   defp hp_pct(_hp, 0), do: 0
   defp hp_pct(hp, max_hp), do: trunc(hp / max_hp * 100)
 
-  defp card_icon({:damage, _}), do: "⚔️"
-  defp card_icon({:damage_nac, _}), do: "✨"
-  defp card_icon({:block, _}), do: "🛡"
-  defp card_icon({:damage_and_block, _, _}), do: "⚔🛡"
-  defp card_icon({:multi_hit, _, _}), do: "💥"
-  defp card_icon(:shield_slam), do: "🗡"
-  defp card_icon({:draw, _}), do: "📜"
-  defp card_icon(:dodge), do: "👤"
-  defp card_icon({:damage_and_draw, _, _}), do: "⚔📜"
-  defp card_icon({:dodge_and_draw, _}), do: "👤📜"
-  defp card_icon({:block_and_draw, _, _}), do: "🛡📜"
-  defp card_icon({:damage_nac_and_draw, _, _}), do: "✨📜"
-  defp card_icon(_), do: "🃏"
-
-  defp action_damage_text(%{type: :attack}, monster), do: monster.damage
-  defp action_damage_text(%{type: :heavy_attack} = action, _), do: action.damage
-  defp action_damage_text(%{type: :ranged} = action, _), do: action.damage
-  defp action_damage_text(%{type: :heal} = action, _), do: "heals #{action.amount}"
-  defp action_damage_text(%{type: :steal_potion}, _), do: "steals a potion"
-  defp action_damage_text(_, _), do: ""
-
-  defp intent_icon(:attack), do: "⚔️"
-  defp intent_icon(:heavy_attack), do: "💥"
-  defp intent_icon(:ranged), do: "🏹"
-  defp intent_icon(:heal), do: "💚"
-  defp intent_icon(:steal_potion), do: "🪙"
-
   # Map floor (0–5) to a monster round for scaling
   # Floor 0→1, 1→3, 2→5, 3→7, 4→9, 5(boss)→11
   defp floor_to_round(floor), do: floor * 2 + 1
@@ -1048,32 +932,4 @@ defmodule DndWeb.GameLive do
         dodge_next: false
     }
   end
-
-  # SVG layout helpers — floor 5 (boss) at top (y=40), floor 0 at bottom (y=480)
-  # Each floor is spaced 80px apart.
-  defp node_y(%{floor: floor}), do: 480 - floor * 80
-  defp node_x(%{floor: 5}), do: 200
-  defp node_x(%{position: pos}), do: 80 + pos * 120
-
-  defp nodes_bottom_to_top(%{nodes: nodes}) do
-    nodes |> Map.values() |> Enum.sort_by(& &1.floor)
-  end
-
-  defp node_fill(:boss, true, _), do: "#7c3aed"
-  defp node_fill(:boss, _, _), do: "#4c1d95"
-  defp node_fill(:fight, true, _), do: "#b91c1c"
-  defp node_fill(:fight, _, _), do: "#7f1d1d"
-  defp node_fill(:rest, true, _), do: "#15803d"
-  defp node_fill(:rest, _, _), do: "#14532d"
-
-  defp node_stroke(:boss, true), do: "#a78bfa"
-  defp node_stroke(:boss, _), do: "#7c3aed"
-  defp node_stroke(:fight, true), do: "#ef4444"
-  defp node_stroke(:fight, _), do: "#b91c1c"
-  defp node_stroke(:rest, true), do: "#4ade80"
-  defp node_stroke(:rest, _), do: "#16a34a"
-
-  defp node_icon(:boss), do: "💀"
-  defp node_icon(:fight), do: "⚔"
-  defp node_icon(:rest), do: "🏕"
 end
