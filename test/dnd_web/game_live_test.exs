@@ -3,9 +3,10 @@ defmodule DndWeb.GameLiveTest do
 
   import Phoenix.LiveViewTest
 
-  # Starts the game and enters the :map phase.
+  # Starts the game and enters the :map phase (submits form then picks warrior class).
   defp start_game(view) do
     view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+    render_click(view, "choose_class", %{"class" => "warrior"})
   end
 
   # Finds the node_id of the first available node of the given type from the
@@ -248,6 +249,95 @@ defmodule DndWeb.GameLiveTest do
   end
 
   # ---------------------------------------------------------------------------
+  # Class select phase
+  # ---------------------------------------------------------------------------
+
+  describe "class select phase" do
+    test "submitting username shows class selection screen", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+
+      assert has_element?(view, "[data-testid=class-select]")
+    end
+
+    test "class select shows warrior, rogue, and mage options", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+
+      assert has_element?(view, "button[phx-value-class=warrior]")
+      assert has_element?(view, "button[phx-value-class=rogue]")
+      assert has_element?(view, "button[phx-value-class=mage]")
+    end
+
+    test "choosing warrior transitions to the map", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      render_click(view, "choose_class", %{"class" => "warrior"})
+
+      assert has_element?(view, "[data-testid=dungeon-map]")
+    end
+
+    test "player name is preserved after class selection", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Thorin"})
+      render_click(view, "choose_class", %{"class" => "warrior"})
+
+      assert has_element?(view, "[data-testid=player-name-map]", "Thorin")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Class-specific combat UI
+  # ---------------------------------------------------------------------------
+
+  describe "class-specific combat UI" do
+    test "mage sees fireball button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      render_click(view, "choose_class", %{"class" => "mage"})
+      enter_fight(view)
+
+      assert has_element?(view, "button[phx-value-action=fireball]")
+    end
+
+    test "mage sees frost nova button", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      render_click(view, "choose_class", %{"class" => "mage"})
+      enter_fight(view)
+
+      assert has_element?(view, "button[phx-value-action=frost_nova]")
+    end
+
+    test "mage mana is shown during combat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      render_click(view, "choose_class", %{"class" => "mage"})
+      enter_fight(view)
+
+      assert has_element?(view, "[data-testid=player-mana]")
+    end
+
+    test "warrior shield charges are shown during combat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      render_click(view, "choose_class", %{"class" => "warrior"})
+      enter_fight(view)
+
+      assert has_element?(view, "[data-testid=shield-charges]")
+    end
+
+    test "rogue combo is shown during combat", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
+      render_click(view, "choose_class", %{"class" => "rogue"})
+      enter_fight(view)
+
+      assert has_element?(view, "[data-testid=rogue-combo]")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Username entry
   # ---------------------------------------------------------------------------
 
@@ -268,6 +358,7 @@ defmodule DndWeb.GameLiveTest do
     test "player name appears in the map header", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Thorin"})
+      render_click(view, "choose_class", %{"class" => "warrior"})
 
       assert has_element?(view, "[data-testid=player-name-map]", "Thorin")
     end

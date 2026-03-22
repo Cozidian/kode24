@@ -15,23 +15,33 @@ defmodule DungeonGame.Combat do
      `{:continue | :player_dead, player, monster, log_entries}`.
 
   ### Player actions (main)
-  - `:attack` — player attacks the monster
-  - `:defend` — player braces (+5 AC for the incoming monster attack); sets
-    `player.defending = true` which `bonus/4` reads
-  - `:skip`   — player does nothing
+  - `:attack`    — player attacks the monster
+  - `:defend`    — player braces (+5 AC this round); Warrior gains a shield charge
+  - `:skip`      — player does nothing
+  - `:finisher`  — Rogue only: deal combo × 1d6 damage, reset combo
+  - `:fireball`  — Mage only: 2 mana, 2d8 ignoring AC
+  - `:frost_nova` — Mage only: 1 mana, 1d6 + halves next incoming hit
 
   ### Player bonus actions
   - `:heal` — player drinks a potion (2d4 HP); no potions → wasted bonus action
   - `:skip` — player does nothing
 
-  The monster always counter-attacks at the end of the bonus phase.
+  ### Class mechanics (applied automatically during act/bonus)
+  - **Warrior** `shield_charges`: Defend adds 1 charge (max 3); each charge absorbs
+    one incoming damage hit.
+  - **Rogue** `combo`: Hits increment; misses/defend reset to 0. Finisher consumes all.
+  - **Mage** `mana`: Regenerates 1 per turn (at start of `act/4`); spells spend mana.
+    `frost_nova_active` flag halves the next incoming hit, then clears.
 
   ## Legacy shim
 
   `tick/4` remains for backward compatibility:
-  - `tick(p, m, :attack, r)` → `act(:attack)` then `bonus(:skip)`
-  - `tick(p, m, :defend, r)` → `act(:defend)` then `bonus(:skip)`
-  - `tick(p, m, :heal,   r)` → `act(:skip)`   then `bonus(:heal)`
+  - `tick(p, m, :attack,    r)` → `act(:attack)` then `bonus(:skip)`
+  - `tick(p, m, :defend,    r)` → `act(:defend)` then `bonus(:skip)`
+  - `tick(p, m, :heal,      r)` → `act(:skip)`   then `bonus(:heal)`
+  - `tick(p, m, :finisher,  r)` → `act(:finisher)` then `bonus(:skip)`
+  - `tick(p, m, :fireball,  r)` → `act(:fireball)` then `bonus(:skip)`
+  - `tick(p, m, :frost_nova,r)` → `act(:frost_nova)` then `bonus(:skip)`
 
   The `roller` argument (`fn sides -> integer()`) is injected for determinism in tests.
   """
@@ -45,7 +55,7 @@ defmodule DungeonGame.Combat do
           required(:damage) => String.t(),
           required(:name) => String.t()
         }
-  @type action :: :attack | :defend | :skip
+  @type action :: :attack | :defend | :skip | :finisher | :fireball | :frost_nova
   @type bonus_action :: :heal | :skip
 
   # ---------------------------------------------------------------------------
@@ -54,6 +64,7 @@ defmodule DungeonGame.Combat do
 
   @doc """
   Resolves the player's main action. The monster does NOT counter-attack yet.
+  Mage mana regenerates by 1 at the start of this phase (capped at max_mana).
 
   Returns:
   - `{:monster_dead, player, monster, log}` — monster was slain
@@ -64,6 +75,7 @@ defmodule DungeonGame.Combat do
   def act(player, monster, action \\ :attack, roller \\ &:rand.uniform/1)
 
   def act(player, monster, :attack, roller) do
+    player = maybe_regen_mana(player)
     {log1, monster, hit1?} = do_player_attack(player, monster, roller)
 
     player =
@@ -73,7 +85,7 @@ defmodule DungeonGame.Combat do
 
     logs = [log1]
 
-    {logs, monster, player} =
+    {logs, monster, player, any_hit?} =
       if has_upgrade?(player, :double_strike) and alive?(monster) do
         {log2, monster, hit2?} = do_player_attack(player, monster, roller)
 
@@ -82,10 +94,12 @@ defmodule DungeonGame.Combat do
             do: %{player | hp: min(player.max_hp, player.hp + 2)},
             else: player
 
-        {logs ++ [log2], monster, player}
+        {logs ++ [log2], monster, player, hit1? or hit2?}
       else
-        {logs, monster, player}
+        {logs, monster, player, hit1?}
       end
+
+    player = update_combo(player, any_hit?)
 
     if not alive?(monster) do
       player = %{player | xp: player.xp + monster.xp}
@@ -100,12 +114,101 @@ defmodule DungeonGame.Combat do
   end
 
   def act(player, monster, :defend, _roller) do
+    player = maybe_regen_mana(player)
     player = %{player | defending: true}
-    {:alive, player, monster, ["You brace yourself. (+5 AC this round)"]}
+
+    {player, extra_log} =
+      cond do
+        player.class == :warrior ->
+          charges = min(3, player.shield_charges + 1)
+          {%{player | shield_charges: charges}, ["🛡 Shield raised! (#{charges}/3 charges)"]}
+
+        player.class == :rogue ->
+          {%{player | combo: 0}, if(player.combo > 0, do: ["Combo broken!"], else: [])}
+
+        true ->
+          {player, []}
+      end
+
+    {:alive, player, monster, ["You brace yourself. (+5 AC this round)"] ++ extra_log}
   end
 
   def act(player, monster, :skip, _roller) do
+    player = maybe_regen_mana(player)
     {:alive, player, monster, ["You skip your action."]}
+  end
+
+  def act(player, monster, :finisher, roller) do
+    player = maybe_regen_mana(player)
+    combo = player.combo
+    player = %{player | combo: 0}
+
+    if combo > 0 do
+      damage = combo * Dice.roll("1d6", roller)
+      monster = apply_damage(monster, damage)
+      log = "💥 Finisher! #{combo} × 1d6 = #{damage} damage!"
+
+      if not alive?(monster) do
+        player = %{player | xp: player.xp + monster.xp}
+        {player, level_up_log} = apply_level_up(player, roller)
+        {player, loot_log} = apply_loot(player, monster, roller)
+
+        {:monster_dead, player, monster,
+         [log, "The #{monster.name} is defeated!"] ++ level_up_log ++ loot_log}
+      else
+        {:alive, player, monster, [log]}
+      end
+    else
+      {:alive, player, monster, ["No combo to unleash!"]}
+    end
+  end
+
+  def act(player, monster, :fireball, roller) do
+    player = maybe_regen_mana(player)
+
+    if player.mana >= 2 do
+      player = %{player | mana: player.mana - 2}
+      damage = Dice.roll("2d8", roller)
+      monster = apply_damage(monster, damage)
+      log = "🔥 Fireball! #{damage} damage, ignoring armor!"
+
+      if not alive?(monster) do
+        player = %{player | xp: player.xp + monster.xp}
+        {player, level_up_log} = apply_level_up(player, roller)
+        {player, loot_log} = apply_loot(player, monster, roller)
+
+        {:monster_dead, player, monster,
+         [log, "The #{monster.name} is defeated!"] ++ level_up_log ++ loot_log}
+      else
+        {:alive, player, monster, [log]}
+      end
+    else
+      {:alive, player, monster, ["Not enough mana for Fireball! (need 2✨)"]}
+    end
+  end
+
+  def act(player, monster, :frost_nova, roller) do
+    player = maybe_regen_mana(player)
+
+    if player.mana >= 1 do
+      player = %{player | mana: player.mana - 1, frost_nova_active: true}
+      damage = Dice.roll("1d6", roller)
+      monster = apply_damage(monster, damage)
+      log = "❄️ Frost Nova! #{damage} damage and the enemy is chilled!"
+
+      if not alive?(monster) do
+        player = %{player | xp: player.xp + monster.xp, frost_nova_active: false}
+        {player, level_up_log} = apply_level_up(player, roller)
+        {player, loot_log} = apply_loot(player, monster, roller)
+
+        {:monster_dead, player, monster,
+         [log, "The #{monster.name} is defeated!"] ++ level_up_log ++ loot_log}
+      else
+        {:alive, player, monster, [log]}
+      end
+    else
+      {:alive, player, monster, ["Not enough mana for Frost Nova! (need 1✨)"]}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -168,11 +271,19 @@ defmodule DungeonGame.Combat do
   @doc """
   Single-call combat exchange (legacy). Delegates to `act/4` + `bonus/4`.
 
-  - `tick(p, m, :attack, r)` → `act(:attack)` then `bonus(:skip)`
-  - `tick(p, m, :defend, r)` → `act(:defend)` then `bonus(:skip)`
-  - `tick(p, m, :heal,   r)` → `act(:skip)`   then `bonus(:heal)`
+  - `tick(p, m, :attack,     r)` → `act(:attack)` then `bonus(:skip)`
+  - `tick(p, m, :defend,     r)` → `act(:defend)` then `bonus(:skip)`
+  - `tick(p, m, :heal,       r)` → `act(:skip)` then `bonus(:heal)`
+  - `tick(p, m, :finisher,   r)` → `act(:finisher)` then `bonus(:skip)`
+  - `tick(p, m, :fireball,   r)` → `act(:fireball)` then `bonus(:skip)`
+  - `tick(p, m, :frost_nova, r)` → `act(:frost_nova)` then `bonus(:skip)`
   """
-  @spec tick(combatant(), combatant(), :attack | :defend | :heal, roller()) ::
+  @spec tick(
+          combatant(),
+          combatant(),
+          :attack | :defend | :heal | :finisher | :fireball | :frost_nova,
+          roller()
+        ) ::
           {:continue | :monster_dead | :player_dead, combatant(), combatant(), [String.t()]}
   def tick(player, monster, action \\ :attack, roller \\ &:rand.uniform/1)
 
@@ -194,6 +305,17 @@ defmodule DungeonGame.Combat do
   def tick(player, monster, :heal, roller) do
     {:alive, player, monster, _} = act(player, monster, :skip, roller)
     combine_with_bonus(player, monster, :heal, roller, [])
+  end
+
+  def tick(player, monster, action, roller)
+      when action in [:finisher, :fireball, :frost_nova] do
+    case act(player, monster, action, roller) do
+      {:monster_dead, player, monster, log} ->
+        {:monster_dead, player, monster, log}
+
+      {:alive, player, monster, action_log} ->
+        combine_with_bonus(player, monster, :skip, roller, action_log)
+    end
   end
 
   defp combine_with_bonus(player, monster, bonus_action, roller, prefix_log) do
@@ -243,10 +365,21 @@ defmodule DungeonGame.Combat do
   # Monster action system
   # ---------------------------------------------------------------------------
 
-  # Applies +5 AC if the player is defending, then runs monster_act.
-  # Also applies Fortify (+5 HP) and Thorns (2 dmg reflected) if equipped.
-  # Resets defending flag and restores original armor_class afterward.
+  # Checks shield charges first (Warrior), then applies defend/frost_nova/thorns effects.
   defp monster_act_with_defend(monster, player, roller) do
+    action = monster.next_action || Monster.pick_action(monster.actions)
+
+    if player.shield_charges > 0 and damage_action?(action) and not player.defending do
+      remaining = player.shield_charges - 1
+      player = %{player | shield_charges: remaining, defending: false}
+      log = "🛡 Your shield absorbs the #{monster.name}'s attack! (#{remaining} charges left)"
+      {[log], player, monster}
+    else
+      apply_monster_action(action, monster, player, roller)
+    end
+  end
+
+  defp apply_monster_action(action, monster, player, roller) do
     {effective_player, original_ac} =
       if player.defending do
         p = %{player | armor_class: player.armor_class + 5, defending: false}
@@ -259,23 +392,35 @@ defmodule DungeonGame.Combat do
         {player, player.armor_class}
       end
 
-    {logs, damaged, monster} = monster_act(monster, effective_player, roller)
+    hp_before = effective_player.hp
+    {logs, result_player, monster} = execute_action(action, monster, effective_player, roller)
 
-    {monster, extra_logs} =
+    # Frost Nova halves incoming damage on this hit
+    {result_player, frost_logs} =
+      if player.frost_nova_active and damage_action?(action) and result_player.hp < hp_before do
+        damage_taken = hp_before - result_player.hp
+        halved = div(damage_taken, 2)
+        p = %{result_player | hp: hp_before - halved}
+        {p, ["❄️ Frost slows the attack — only #{halved} damage taken!"]}
+      else
+        {result_player, []}
+      end
+
+    {monster, thorns_logs} =
       if player.defending and has_upgrade?(player, :thorns) do
         {apply_damage(monster, 2), ["Your thorns deal 2 damage to the #{monster.name}!"]}
       else
         {monster, []}
       end
 
-    result_player = %{damaged | armor_class: original_ac, defending: false}
-    {logs ++ extra_logs, result_player, monster}
-  end
+    result_player = %{
+      result_player
+      | armor_class: original_ac,
+        defending: false,
+        frost_nova_active: false
+    }
 
-  # Uses the monster's pre-selected next_action (or picks randomly as fallback).
-  defp monster_act(monster, player, roller) do
-    action = monster.next_action || Monster.pick_action(monster.actions)
-    execute_action(action, monster, player, roller)
+    {logs ++ frost_logs ++ thorns_logs, result_player, monster}
   end
 
   defp execute_action(%{type: :attack}, monster, player, roller) do
@@ -328,6 +473,22 @@ defmodule DungeonGame.Combat do
   # Private helpers
   # ---------------------------------------------------------------------------
 
+  # Regenerates 1 mana for Mages at the start of each action phase.
+  defp maybe_regen_mana(%{max_mana: max} = player) when max > 0 do
+    %{player | mana: min(max, player.mana + 1)}
+  end
+
+  defp maybe_regen_mana(player), do: player
+
+  # Updates Rogue's combo counter after an attack.
+  defp update_combo(%{class: :rogue} = player, true), do: %{player | combo: player.combo + 1}
+  defp update_combo(%{class: :rogue} = player, false), do: %{player | combo: 0}
+  defp update_combo(player, _), do: player
+
+  # Returns true if the action type deals direct damage to the player.
+  defp damage_action?(%{type: type}) when type in [:attack, :heavy_attack, :ranged], do: true
+  defp damage_action?(_), do: false
+
   defp apply_level_up(player, roller) do
     leveled = Player.apply_level_up(player, roller)
 
@@ -356,7 +517,7 @@ defmodule DungeonGame.Combat do
   end
 
   # Performs a player attack, applying Execute (+3 dmg at ≤30% HP) and returning
-  # whether the attack landed (used by Lifesteal).
+  # whether the attack landed (used by Lifesteal and combo tracking).
   defp do_player_attack(player, monster, roller) do
     effective_player =
       if has_upgrade?(player, :execute) and monster.hp <= ceil(monster.max_hp * 0.3) do

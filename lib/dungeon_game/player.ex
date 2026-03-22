@@ -8,7 +8,7 @@ defmodule DungeonGame.Player do
             max_hp: 20,
             damage: "1d4",
             armor_class: 14,
-            potions: 2,
+            potions: 0,
             xp: 0,
             level: 1,
             gold: 0,
@@ -23,7 +23,13 @@ defmodule DungeonGame.Player do
             upgrade_attack: nil,
             upgrade_defend: nil,
             upgrade_heal: nil,
-            upgrades_passive: []
+            upgrades_passive: [],
+            class: nil,
+            shield_charges: 0,
+            combo: 0,
+            mana: 0,
+            max_mana: 0,
+            frost_nova_active: false
 
   @doc """
   Returns the minimum XP required to reach `level`.

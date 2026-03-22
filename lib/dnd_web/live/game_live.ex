@@ -1,7 +1,7 @@
 defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
-  alias DungeonGame.{Combat, DungeonMap, Highscore, Monster, Player, Upgrade}
+  alias DungeonGame.{Combat, DungeonMap, Highscore, Monster, Player, PlayerClass, Upgrade}
   alias DndWeb.Portraits
 
   # ---------------------------------------------------------------------------
@@ -21,6 +21,7 @@ defmodule DndWeb.GameLive do
         log: [],
         upgrade_choices: [],
         pending_floor: 0,
+        pending_name: nil,
         highscores: Highscore.list(),
         show_qr: false
       )
@@ -65,6 +66,36 @@ defmodule DndWeb.GameLive do
             Start Game
           </button>
         </form>
+      </div>
+
+      <%!-- Class Select --%>
+      <div :if={@phase == :class_select} data-testid="class-select" class="w-full max-w-2xl space-y-6">
+        <div class="text-center">
+          <h2 class="text-2xl sm:text-4xl font-bold text-yellow-400">Choose Your Class</h2>
+          <p class="text-gray-400 mt-2">
+            Who will brave the dungeon, <span class="text-white font-bold">{@pending_name}</span>?
+          </p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div
+            :for={class <- PlayerClass.all()}
+            class="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-700 hover:border-yellow-500 transition-all flex flex-col"
+          >
+            <div class="text-5xl text-center mb-3">{class.icon}</div>
+            <div class="text-xl font-bold text-white text-center mb-1">{class.name}</div>
+            <div class="text-xs text-gray-400 text-center mb-3">
+              HP: {class.hp} | AC: {class.armor_class} | DMG: {class.damage}
+            </div>
+            <p class="text-gray-300 text-sm flex-1 mb-4">{class.description}</p>
+            <button
+              phx-click="choose_class"
+              phx-value-class={class.id}
+              class="w-full bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold py-3 rounded-xl transition-all cursor-pointer"
+            >
+              Play as {class.name}
+            </button>
+          </div>
+        </div>
       </div>
 
       <%!-- Dungeon Map --%>
@@ -148,6 +179,33 @@ defmodule DndWeb.GameLive do
                   ({xp_to_next(@player)} to next)
                 </span>
               </div>
+              <div
+                :if={@player.class == :warrior}
+                data-testid="shield-charges"
+                class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1"
+              >
+                🛡 Charges:
+                <span
+                  :for={i <- 1..3}
+                  class={if i <= @player.shield_charges, do: "text-yellow-400", else: "text-gray-600"}
+                >
+                  ●
+                </span>
+              </div>
+              <div
+                :if={@player.class == :rogue}
+                data-testid="rogue-combo"
+                class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1"
+              >
+                💥 Combo: <span class="text-orange-400 font-bold">{@player.combo}</span>
+              </div>
+              <div
+                :if={@player.class == :mage}
+                data-testid="player-mana"
+                class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1"
+              >
+                ✨ Mana: <span class="text-blue-400 font-bold">{@player.mana}/{@player.max_mana}</span>
+              </div>
             </div>
           </div>
 
@@ -199,32 +257,61 @@ defmodule DndWeb.GameLive do
         </div>
 
         <%!-- Action buttons --%>
-        <div :if={@phase == :fighting} class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+        <div :if={@phase == :fighting} class="flex flex-wrap gap-2 sm:gap-3 justify-center">
           <button
             phx-click="player_action"
             phx-value-action="attack"
-            class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+            class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
             ⚔️ Attack ({damage_label(@player)})
           </button>
           <button
+            :if={@player.class in [:warrior, :rogue]}
             phx-click="player_action"
             phx-value-action="defend"
-            class="bg-blue-700 hover:bg-blue-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+            class="bg-blue-700 hover:bg-blue-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
-            🛡️ Defend
+            🛡️ {if @player.class == :warrior,
+              do: "Shield (#{@player.shield_charges}/3)",
+              else: "Defend"}
+          </button>
+          <button
+            :if={@player.class == :rogue and @player.combo >= 3}
+            phx-click="player_action"
+            phx-value-action="finisher"
+            class="bg-orange-600 hover:bg-orange-500 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
+          >
+            💥 Finisher ({@player.combo}×1d6)
+          </button>
+          <button
+            :if={@player.class == :mage}
+            phx-click="player_action"
+            phx-value-action="fireball"
+            disabled={@player.mana < 2}
+            class="bg-orange-700 hover:bg-orange-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+          >
+            🔥 Fireball (2✨)
+          </button>
+          <button
+            :if={@player.class == :mage}
+            phx-click="player_action"
+            phx-value-action="frost_nova"
+            disabled={@player.mana < 1}
+            class="bg-cyan-700 hover:bg-cyan-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+          >
+            ❄️ Frost Nova (1✨)
           </button>
           <button
             phx-click="player_action"
             phx-value-action="heal"
             disabled={@player.potions == 0}
-            class="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            class="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             🧪 Heal ({@player.potions})
           </button>
           <button
             phx-click="open_inventory"
-            class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 rounded-2xl transition-all cursor-pointer shadow-lg"
+            class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
           >
             🎒 Bag ({length(@player.inventory)})
           </button>
@@ -572,26 +659,31 @@ defmodule DndWeb.GameLive do
        log: [],
        upgrade_choices: [],
        pending_floor: 0,
+       pending_name: nil,
        highscores: Highscore.list()
      )}
   end
 
   @impl true
   def handle_event("start_game", %{"username" => username}, socket) do
-    player = %Player{name: String.trim(username)}
+    {:noreply, assign(socket, phase: :class_select, pending_name: String.trim(username))}
+  end
+
+  @impl true
+  def handle_event("choose_class", %{"class" => class_str}, socket) do
+    class_id = String.to_atom(class_str)
+    player = PlayerClass.new_player(class_id, socket.assigns.pending_name)
     dungeon_map = DungeonMap.generate()
 
-    socket =
-      assign(socket,
-        phase: :map,
-        player: player,
-        dungeon_map: dungeon_map,
-        current_floor: 0,
-        turn: 0,
-        log: []
-      )
-
-    {:noreply, socket}
+    {:noreply,
+     assign(socket,
+       phase: :map,
+       player: player,
+       dungeon_map: dungeon_map,
+       current_floor: 0,
+       turn: 0,
+       log: []
+     )}
   end
 
   @impl true
