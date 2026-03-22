@@ -2,26 +2,31 @@ defmodule DungeonGame.Loot do
   @moduledoc """
   Handles loot drops when a monster is defeated.
 
-  Each drop type is rolled independently:
-  - Gold drops when `roller.(2) == 2` (50% chance)
-  - An item drops when `roller.(2) == 2` (50% chance)
-  - A potion drops when `roller.(2) == 2` (50% chance)
-
-  Returns a list of drop tuples. The list may be empty or contain any combination of entries.
+  Normal fights drop only gold (50% chance).
+  Elite fights additionally offer a choice of items/potions via `elite_choices/1`.
   """
 
   alias DungeonGame.{Dice, Item}
 
   @doc """
-  Rolls for all possible drops from a defeated monster.
-
-  Returns a (possibly empty) list of `{:gold, amount}` and/or `{:item, %Item{}}` tuples.
+  Rolls for gold drop from a normal fight.
+  Returns `[{:gold, amount}]` (50% chance) or `[]`.
   """
-  @spec roll(map(), Dice.roller()) :: [{:gold, pos_integer()} | {:item, Item.t()} | {:potion, 1}]
+  @spec roll(map(), Dice.roller()) :: [{:gold, pos_integer()}]
   def roll(monster, roller \\ &:rand.uniform/1) do
-    gold_drop = if roller.(2) == 2, do: [{:gold, monster.gold}], else: []
-    item_drop = if roller.(2) == 2, do: [{:item, Item.random(roller)}], else: []
-    potion_drop = if roller.(2) == 2, do: [{:potion, 1}], else: []
-    gold_drop ++ item_drop ++ potion_drop
+    if roller.(2) == 2, do: [{:gold, monster.gold}], else: []
+  end
+
+  @doc """
+  Generates 3 elite reward choices: 2 random items + 1 potion.
+  The player picks one after defeating an elite monster.
+  """
+  @spec elite_choices(Dice.roller()) :: [{:item, Item.t()} | {:potion, pos_integer()}]
+  def elite_choices(roller \\ &:rand.uniform/1) do
+    [
+      {:item, Item.random(roller)},
+      {:item, Item.random(roller)},
+      {:potion, 2}
+    ]
   end
 end

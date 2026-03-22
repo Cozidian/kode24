@@ -16,8 +16,10 @@ defmodule DungeonGame.DungeonMap do
 
   @floors 0..4
   @nodes_per_floor 3
-  # Threshold out of 10: roll <= 2 → :rest, else :fight
+  # Thresholds out of 10: roll ≤ 2 → :rest, 3–4 → :elite, 5–6 → :shop, 7–10 → :fight
   @rest_threshold 2
+  @elite_threshold 4
+  @shop_threshold 6
 
   @doc """
   Generates a fresh dungeon map using the injectable `roller` function.
@@ -90,9 +92,16 @@ defmodule DungeonGame.DungeonMap do
     %MapNode{id: "boss", type: :boss, floor: 5, position: 0, connections: []}
   end
 
-  # Roll 1..10; ≤ @rest_threshold → :rest, else :fight
+  # Roll 1..10; ≤ rest → :rest, ≤ elite → :elite, ≤ shop → :shop, else :fight
   defp node_type(roller) do
-    if roller.(10) <= @rest_threshold, do: :rest, else: :fight
+    roll = roller.(10)
+
+    cond do
+      roll <= @rest_threshold -> :rest
+      roll <= @elite_threshold -> :elite
+      roll <= @shop_threshold -> :shop
+      true -> :fight
+    end
   end
 
   # Wire up connections: each floor-N node connects to 1–2 floor-(N+1) nodes,

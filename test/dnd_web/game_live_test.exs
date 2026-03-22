@@ -30,7 +30,9 @@ defmodule DndWeb.GameLiveTest do
   defp enter_fight(view) do
     fight_id = find_available_node_id(view, "fight")
     boss_id = find_available_node_id(view, "boss")
+    elite_id = find_available_node_id(view, "elite")
     rest_id = find_available_node_id(view, "rest")
+    shop_id = find_available_node_id(view, "shop")
 
     cond do
       fight_id ->
@@ -39,9 +41,17 @@ defmodule DndWeb.GameLiveTest do
       boss_id ->
         render_click(view, "select_node", %{"node_id" => boss_id})
 
+      elite_id ->
+        render_click(view, "select_node", %{"node_id" => elite_id})
+
       rest_id ->
         render_click(view, "select_node", %{"node_id" => rest_id})
         render_click(view, "rest_and_continue", %{})
+        enter_fight(view)
+
+      shop_id ->
+        render_click(view, "select_node", %{"node_id" => shop_id})
+        render_click(view, "leave_shop", %{})
         enter_fight(view)
 
       true ->
@@ -59,6 +69,10 @@ defmodule DndWeb.GameLiveTest do
 
         has_element?(view, "button[phx-click=choose_upgrade]") ->
           render_click(view, "choose_upgrade", %{"id" => "bash"})
+          {:cont, :ok}
+
+        has_element?(view, "button[phx-click=skip_elite_loot]") ->
+          render_click(view, "skip_elite_loot", %{})
           {:cont, :ok}
 
         has_element?(view, "button[phx-click=end_turn]") ->

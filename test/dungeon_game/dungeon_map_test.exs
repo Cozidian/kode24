@@ -40,11 +40,11 @@ defmodule DungeonGame.DungeonMapTest do
       end
     end
 
-    test "all non-boss nodes have type :fight or :rest" do
+    test "all non-boss nodes have type :fight, :rest, :elite, or :shop" do
       map = DungeonMap.generate(always(1))
 
       non_boss = map.nodes |> Map.values() |> Enum.reject(&(&1.type == :boss))
-      assert Enum.all?(non_boss, &(&1.type in [:fight, :rest]))
+      assert Enum.all?(non_boss, &(&1.type in [:fight, :rest, :elite, :shop]))
     end
 
     test "all floor-4 nodes connect to boss" do
@@ -80,12 +80,24 @@ defmodule DungeonGame.DungeonMapTest do
       assert map.visited_ids == []
     end
 
-    test "with roller always returning max, most nodes are :fight (high roll = fight)" do
+    test "with roller always returning max (10), all non-boss nodes are :fight" do
       map = DungeonMap.generate(always(10))
       non_boss = map.nodes |> Map.values() |> Enum.reject(&(&1.type == :boss))
       fight_count = Enum.count(non_boss, &(&1.type == :fight))
-      # With max roller all should be :fight (fight is the default when roll > 20%)
+      # roll 10 > elite threshold (4), so all are :fight
       assert fight_count == 15
+    end
+
+    test "with roller always returning 3 or 4, all non-boss nodes are :elite" do
+      map = DungeonMap.generate(always(3))
+      non_boss = map.nodes |> Map.values() |> Enum.reject(&(&1.type == :boss))
+      assert Enum.all?(non_boss, &(&1.type == :elite))
+    end
+
+    test "with roller always returning 5 or 6, all non-boss nodes are :shop" do
+      map = DungeonMap.generate(always(5))
+      non_boss = map.nodes |> Map.values() |> Enum.reject(&(&1.type == :boss))
+      assert Enum.all?(non_boss, &(&1.type == :shop))
     end
   end
 

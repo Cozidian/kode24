@@ -1,7 +1,18 @@
 defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
-  alias DungeonGame.{Card, Combat, DungeonMap, Highscore, Monster, Player, PlayerClass}
+  alias DungeonGame.{
+    Card,
+    Combat,
+    DungeonMap,
+    Highscore,
+    Loot,
+    Monster,
+    Player,
+    PlayerClass,
+    Shop
+  }
+
   alias DndWeb.{GameComponents, Portraits}
 
   import DndWeb.GameComponents, only: [card_icon: 1, intent_icon: 1, action_damage_text: 2]
@@ -22,6 +33,9 @@ defmodule DndWeb.GameLive do
         turn: 0,
         log: [],
         upgrade_choices: [],
+        elite_loot_choices: [],
+        post_elite_phase: :map,
+        shop_inventory: [],
         pending_floor: 0,
         pending_name: nil,
         highscores: Highscore.list(),
@@ -118,6 +132,50 @@ defmodule DndWeb.GameLive do
         </div>
 
         <p class="text-center text-gray-500 text-sm">Select a node to continue your journey</p>
+      </div>
+
+      <%!-- Shop screen --%>
+      <div :if={@phase == :shop} class="w-full max-w-4xl space-y-3 sm:space-y-6">
+        <div class="text-center">
+          <h2 class="text-2xl sm:text-4xl font-bold text-yellow-400">🏪 Merchant</h2>
+          <p class="text-gray-400 text-sm mt-1">
+            Gold: <span class="text-yellow-400 font-bold">{@player.gold}</span>
+          </p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div
+            :for={{entry, idx} <- Enum.with_index(@shop_inventory)}
+            class="bg-gray-800 rounded-2xl p-5 shadow-xl border border-gray-600 hover:border-yellow-500 transition-all flex flex-col"
+          >
+            <div class="text-4xl text-center mb-2">{shop_entry_icon(entry)}</div>
+            <div class="text-base font-bold text-yellow-300 text-center mb-1">
+              {shop_entry_name(entry)}
+            </div>
+            <p class="text-gray-400 text-xs text-center flex-1 mb-3">
+              {shop_entry_desc(entry)}
+            </p>
+            <div class="text-center text-yellow-400 font-bold text-sm mb-3">
+              🪙 {elem(entry, 2)} gold
+            </div>
+            <button
+              phx-click="buy_item"
+              phx-value-index={idx}
+              disabled={@player.gold < elem(entry, 2)}
+              class="w-full bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold py-2 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+            >
+              Buy
+            </button>
+          </div>
+        </div>
+        <div :if={@shop_inventory == []} class="text-center text-gray-500 italic py-8">
+          The merchant has nothing left to sell.
+        </div>
+        <button
+          phx-click="leave_shop"
+          class="w-full bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-bold text-xl py-4 rounded-2xl transition-all cursor-pointer shadow-lg"
+        >
+          Leave Shop →
+        </button>
       </div>
 
       <%!-- Rest screen --%>
@@ -556,6 +614,43 @@ defmodule DndWeb.GameLive do
         </div>
       </div>
 
+      <%!-- Elite loot screen --%>
+      <div :if={@phase == :elite_loot} class="w-full max-w-4xl space-y-3 sm:space-y-6">
+        <div class="text-center">
+          <h2 class="text-2xl sm:text-4xl font-bold text-orange-400">☠️ Elite Spoils!</h2>
+          <p class="text-base sm:text-xl text-gray-300 mt-2">Choose a reward from the fallen elite</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
+          <div
+            :for={{choice, idx} <- Enum.with_index(@elite_loot_choices)}
+            class="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-600 hover:border-orange-500 transition-all flex flex-col"
+          >
+            <div class="text-4xl text-center mb-2">
+              {if match?({:item, _}, choice), do: "⚔️", else: "🧪"}
+            </div>
+            <div class="text-lg font-bold text-orange-400 text-center mb-1">
+              {elite_choice_name(choice)}
+            </div>
+            <p class="text-gray-200 text-sm flex-1">{elite_choice_desc(choice)}</p>
+            <button
+              phx-click="choose_elite_loot"
+              phx-value-index={idx}
+              class="mt-4 w-full bg-orange-500 hover:bg-orange-400 active:scale-95 text-white font-bold py-2 rounded-xl transition-all cursor-pointer"
+            >
+              Take it
+            </button>
+          </div>
+        </div>
+        <div class="text-center">
+          <button
+            phx-click="skip_elite_loot"
+            class="text-gray-500 hover:text-gray-300 text-sm underline transition-colors cursor-pointer"
+          >
+            Skip — leave the spoils behind
+          </button>
+        </div>
+      </div>
+
       <%!-- Victory screen --%>
       <div :if={@phase == :victory} class="w-full max-w-lg text-center space-y-6">
         <div class="bg-yellow-950 border border-yellow-500 rounded-2xl p-8 shadow-xl">
@@ -656,6 +751,9 @@ defmodule DndWeb.GameLive do
        turn: 0,
        log: [],
        upgrade_choices: [],
+       elite_loot_choices: [],
+       post_elite_phase: :map,
+       shop_inventory: [],
        pending_floor: 0,
        pending_name: nil,
        highscores: Highscore.list(),
@@ -701,6 +799,32 @@ defmodule DndWeb.GameLive do
            player: healed_player,
            dungeon_map: map,
            current_floor: node.floor
+         )}
+
+      :shop ->
+        inventory = Shop.generate(player.class)
+
+        {:noreply,
+         assign(socket,
+           phase: :shop,
+           shop_inventory: inventory,
+           dungeon_map: map,
+           current_floor: node.floor
+         )}
+
+      :elite ->
+        monster = Monster.elite_for_round(floor_to_round(node.floor))
+        player = reset_for_new_fight(player)
+
+        {:noreply,
+         assign(socket,
+           phase: :fighting,
+           player: player,
+           monster: monster,
+           dungeon_map: map,
+           current_floor: node.floor,
+           turn: 0,
+           log: ["⚠️ An elite #{monster.name} blocks your path!"]
          )}
 
       fight_type when fight_type in [:fight, :boss] ->
@@ -813,10 +937,10 @@ defmodule DndWeb.GameLive do
     socket = assign(socket, player: player, upgrade_choices: [])
 
     socket =
-      if after_phase == :victory do
-        assign(socket, phase: :victory)
-      else
-        assign(socket, phase: :map)
+      case after_phase do
+        :elite_loot -> assign(socket, phase: :elite_loot)
+        :victory -> assign(socket, phase: :victory)
+        _ -> assign(socket, phase: :map)
       end
 
     {:noreply, socket}
@@ -827,11 +951,68 @@ defmodule DndWeb.GameLive do
     after_phase = Map.get(socket.assigns, :pending_phase, :map)
 
     socket =
-      if after_phase == :victory,
-        do: assign(socket, phase: :victory, upgrade_choices: []),
-        else: assign(socket, phase: :map, upgrade_choices: [])
+      case after_phase do
+        :elite_loot -> assign(socket, phase: :elite_loot, upgrade_choices: [])
+        :victory -> assign(socket, phase: :victory, upgrade_choices: [])
+        _ -> assign(socket, phase: :map, upgrade_choices: [])
+      end
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("choose_elite_loot", %{"index" => idx_str}, socket) do
+    idx = String.to_integer(idx_str)
+    player = socket.assigns.player
+    choice = Enum.at(socket.assigns.elite_loot_choices, idx)
+    after_phase = socket.assigns.post_elite_phase
+
+    player =
+      case choice do
+        {:item, item} -> %{player | inventory: [item | player.inventory]}
+        {:potion, n} -> %{player | potions: player.potions + n}
+        nil -> player
+      end
+
+    {:noreply, assign(socket, player: player, elite_loot_choices: [], phase: after_phase)}
+  end
+
+  @impl true
+  def handle_event("skip_elite_loot", _params, socket) do
+    {:noreply, assign(socket, elite_loot_choices: [], phase: socket.assigns.post_elite_phase)}
+  end
+
+  @impl true
+  def handle_event("buy_item", %{"index" => idx_str}, socket) do
+    idx = String.to_integer(idx_str)
+    player = socket.assigns.player
+    inventory = socket.assigns.shop_inventory
+    entry = Enum.at(inventory, idx)
+
+    case entry do
+      {_type, _payload, price} when player.gold < price ->
+        {:noreply, socket}
+
+      {:item, item, price} ->
+        player = %{player | gold: player.gold - price, inventory: [item | player.inventory]}
+        {:noreply, assign(socket, player: player, shop_inventory: List.delete_at(inventory, idx))}
+
+      {:potion, count, price} ->
+        player = %{player | gold: player.gold - price, potions: player.potions + count}
+        {:noreply, assign(socket, player: player, shop_inventory: List.delete_at(inventory, idx))}
+
+      {:card, card, price} ->
+        player = %{player | gold: player.gold - price, discard: [card | player.discard]}
+        {:noreply, assign(socket, player: player, shop_inventory: List.delete_at(inventory, idx))}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("leave_shop", _params, socket) do
+    {:noreply, assign(socket, phase: :map, shop_inventory: [])}
   end
 
   @impl true
@@ -883,17 +1064,29 @@ defmodule DndWeb.GameLive do
 
   defp handle_monster_dead(socket, _old_player, new_player, floor, log, entries) do
     current_node = DungeonMap.current_node(socket.assigns.dungeon_map)
-    after_fight_phase = if current_node.type == :boss, do: :victory, else: :map
-    choices = Card.reward_pool(new_player.class) |> Enum.shuffle() |> Enum.take(3)
+    is_boss = current_node.type == :boss
+    is_elite = current_node.type == :elite
+    final_phase = if is_boss, do: :victory, else: :map
+    card_choices = Card.reward_pool(new_player.class) |> Enum.shuffle() |> Enum.take(3)
+
+    {pending_phase, extra_assigns} =
+      if is_elite do
+        loot_choices = Loot.elite_choices()
+        {:elite_loot, [elite_loot_choices: loot_choices, post_elite_phase: final_phase]}
+      else
+        {final_phase, []}
+      end
 
     {:noreply,
      socket
      |> assign(
-       phase: :reward,
-       player: new_player,
-       upgrade_choices: choices,
-       pending_floor: floor,
-       pending_phase: after_fight_phase
+       [
+         phase: :reward,
+         player: new_player,
+         upgrade_choices: card_choices,
+         pending_floor: floor,
+         pending_phase: pending_phase
+       ] ++ extra_assigns
      )
      |> put_log(log, entries ++ ["Room cleared! Choose your reward."])}
   end
@@ -917,6 +1110,29 @@ defmodule DndWeb.GameLive do
   end
 
   defp rest_heal_amount(%{max_hp: max_hp}), do: max(1, trunc(max_hp * 0.3))
+
+  defp shop_entry_icon({:item, %{type: :weapon}, _}), do: "⚔️"
+  defp shop_entry_icon({:item, %{type: :armor}, _}), do: "🛡️"
+  defp shop_entry_icon({:item, %{type: :helm}, _}), do: "🪖"
+  defp shop_entry_icon({:item, %{type: :boots}, _}), do: "🥾"
+  defp shop_entry_icon({:potion, _, _}), do: "🧪"
+  defp shop_entry_icon({:card, _, _}), do: "🃏"
+
+  defp shop_entry_name({:item, item, _}), do: item.name
+  defp shop_entry_name({:potion, count, _}), do: "#{count}× Potion"
+  defp shop_entry_name({:card, card, _}), do: card.name
+
+  defp shop_entry_desc({:item, %{type: :weapon, bonus: b}, _}), do: "+#{b} damage"
+  defp shop_entry_desc({:item, %{type: type, bonus: b}, _}), do: "+#{b} AC (#{type})"
+  defp shop_entry_desc({:potion, _, _}), do: "Restore HP in battle"
+  defp shop_entry_desc({:card, card, _}), do: card.description
+
+  defp elite_choice_name({:item, item}), do: item.name
+  defp elite_choice_name({:potion, n}), do: "#{n}x Potion"
+
+  defp elite_choice_desc({:item, %{type: :weapon, bonus: b}}), do: "+#{b} damage weapon"
+  defp elite_choice_desc({:item, %{type: type, bonus: b}}), do: "+#{b} AC #{type}"
+  defp elite_choice_desc({:potion, n}), do: "Restore HP #{n} times in battle"
 
   defp reset_for_new_fight(player) do
     all_cards = player.hand ++ player.deck ++ player.discard

@@ -40,4 +40,28 @@ defmodule DungeonGame.MonsterTest do
       end
     end
   end
+
+  describe "elite_for_round/1" do
+    test "has the same name as for_round for the same round" do
+      assert Monster.elite_for_round(1).name == Monster.for_round(1).name
+      assert Monster.elite_for_round(5).name == Monster.for_round(5).name
+    end
+
+    test "has higher HP than normal monster for the same round" do
+      assert Monster.elite_for_round(1).hp > Monster.for_round(1).hp
+    end
+
+    test "has higher AC than normal monster for the same round" do
+      assert Monster.elite_for_round(1).armor_class > Monster.for_round(1).armor_class
+    end
+
+    test "has higher gold than normal monster for the same round" do
+      assert Monster.elite_for_round(1).gold > Monster.for_round(1).gold
+    end
+
+    test "hp and max_hp are equal at spawn" do
+      elite = Monster.elite_for_round(3)
+      assert elite.hp == elite.max_hp
+    end
+  end
 end

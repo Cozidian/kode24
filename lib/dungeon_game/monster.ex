@@ -98,6 +98,24 @@ defmodule DungeonGame.Monster do
   end
 
   @doc """
+  Spawns an elite monster scaled to the given `round` number.
+  Same tier as `for_round/1` but with 50% more HP, +2 AC, and double gold.
+  """
+  @spec elite_for_round(pos_integer()) :: %__MODULE__{}
+  def elite_for_round(round) do
+    base = for_round(round)
+    elite_hp = trunc(base.hp * 1.5)
+
+    %{
+      base
+      | hp: elite_hp,
+        max_hp: elite_hp,
+        armor_class: base.armor_class + 2,
+        gold: base.gold * 2
+    }
+  end
+
+  @doc """
   Randomly picks one action from `actions` using weighted selection.
   Used externally to refresh a monster's `next_action` after each turn.
   """

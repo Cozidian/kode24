@@ -156,6 +156,10 @@ defmodule DndWeb.GameComponents do
   def node_fill(:boss, _, _), do: "#4c1d95"
   def node_fill(:fight, true, _), do: "#b91c1c"
   def node_fill(:fight, _, _), do: "#7f1d1d"
+  def node_fill(:elite, true, _), do: "#c2410c"
+  def node_fill(:elite, _, _), do: "#7c2d12"
+  def node_fill(:shop, true, _), do: "#b45309"
+  def node_fill(:shop, _, _), do: "#78350f"
   def node_fill(:rest, true, _), do: "#15803d"
   def node_fill(:rest, _, _), do: "#14532d"
 
@@ -163,10 +167,16 @@ defmodule DndWeb.GameComponents do
   def node_stroke(:boss, _), do: "#7c3aed"
   def node_stroke(:fight, true), do: "#ef4444"
   def node_stroke(:fight, _), do: "#b91c1c"
+  def node_stroke(:elite, true), do: "#fb923c"
+  def node_stroke(:elite, _), do: "#c2410c"
+  def node_stroke(:shop, true), do: "#fcd34d"
+  def node_stroke(:shop, _), do: "#d97706"
   def node_stroke(:rest, true), do: "#4ade80"
   def node_stroke(:rest, _), do: "#16a34a"
 
   def node_icon(:boss), do: "💀"
   def node_icon(:fight), do: "⚔"
+  def node_icon(:elite), do: "☠"
+  def node_icon(:shop), do: "🏪"
   def node_icon(:rest), do: "🏕"
 end
