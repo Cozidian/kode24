@@ -1,248 +1,286 @@
 defmodule DungeonGame.ClassCombatTest do
   use ExUnit.Case, async: true
 
-  alias DungeonGame.{Combat, Monster, PlayerClass}
+  alias DungeonGame.{Card, Combat, Monster, PlayerClass}
 
   defp always(n), do: fn _sides -> n end
 
-  defp durable_monster do
-    %{
-      Monster.for_round(1)
-      | hp: 1000,
-        max_hp: 1000,
-        armor_class: 1,
-        actions: [%{name: "Attack", type: :attack, weight: 1}],
-        next_action: nil
-    }
+  defp attack_only(monster) do
+    %{monster | actions: [%{name: "Attack", type: :attack, weight: 1}], next_action: nil}
   end
 
-  defp unhittable_monster do
-    %{
-      Monster.for_round(1)
-      | armor_class: 100,
-        actions: [%{name: "Attack", type: :attack, weight: 1}],
-        next_action: nil
-    }
-  end
+  defp durable_monster,
+    do: attack_only(%{Monster.for_round(1) | hp: 1000, max_hp: 1000, armor_class: 1})
+
+  defp unhittable_monster,
+    do: attack_only(%{Monster.for_round(1) | hp: 1000, max_hp: 1000, armor_class: 100})
+
+  defp warrior, do: PlayerClass.new_player(:warrior, "Thor")
+  defp rogue, do: PlayerClass.new_player(:rogue, "Shadow")
+  defp mage, do: PlayerClass.new_player(:mage, "Gandalf")
+
+  defp card(class, id), do: Enum.find(Card.all(class), &(&1.id == id))
 
   # ---------------------------------------------------------------------------
-  # Warrior — Shield Charges
+  # Warrior — block mechanics
   # ---------------------------------------------------------------------------
 
-  describe "warrior shield charges" do
-    setup do
-      %{warrior: PlayerClass.new_player(:warrior, "Thor")}
+  describe "warrior block cards" do
+    test "shield_up gains 6 block" do
+      player = warrior()
+      c = card(:warrior, :shield_up)
+      {:alive, updated, _, _} = Combat.play_card(player, durable_monster(), c, always(1))
+      assert updated.block == 6
     end
 
-    test "defend adds a shield charge", %{warrior: warrior} do
-      {:continue, updated, _m, _log} = Combat.tick(warrior, durable_monster(), :defend, always(1))
-      assert updated.shield_charges == 1
+    test "iron_wave deals damage and gains 4 block" do
+      player = warrior()
+      c = card(:warrior, :iron_wave)
+
+      {:alive, updated_player, updated_monster, _} =
+        Combat.play_card(player, durable_monster(), c, always(8))
+
+      assert updated_monster.hp < durable_monster().hp
+      assert updated_player.block == 4
     end
 
-    test "defend stacks charges up to 3", %{warrior: warrior} do
-      m = durable_monster()
-      {:continue, w1, _, _} = Combat.tick(warrior, m, :defend, always(1))
-      {:continue, w2, _, _} = Combat.tick(w1, m, :defend, always(1))
-      {:continue, w3, _, _} = Combat.tick(w2, m, :defend, always(1))
-      assert w3.shield_charges == 3
+    test "shield_slam deals block as damage and clears block" do
+      player = %{warrior() | block: 10}
+      c = card(:warrior, :shield_slam)
+
+      {:alive, updated_player, updated_monster, _} =
+        Combat.play_card(player, durable_monster(), c, always(1))
+
+      assert updated_monster.hp == durable_monster().hp - 10
+      assert updated_player.block == 0
     end
 
-    test "defend does not exceed 3 charges", %{warrior: warrior} do
-      m = durable_monster()
-      w = %{warrior | shield_charges: 3}
-      {:continue, updated, _, _} = Combat.tick(w, m, :defend, always(1))
-      assert updated.shield_charges == 3
+    test "bulwark gains 12 block" do
+      player = warrior()
+      c = card(:warrior, :bulwark)
+      {:alive, updated, _, _} = Combat.play_card(player, durable_monster(), c, always(1))
+      assert updated.block == 12
     end
 
-    test "a shield charge absorbs the monster counter-attack (no damage)", %{warrior: warrior} do
-      w = %{warrior | shield_charges: 1}
-      # always(10) guarantees monster hits
-      {:continue, updated, _m, _log} = Combat.tick(w, durable_monster(), :attack, always(10))
-      assert updated.shield_charges == 0
-      # HP should be unchanged — charge absorbed the hit
-      assert updated.hp == warrior.hp
+    test "block absorbs monster damage at end of turn" do
+      player = %{warrior() | block: 100, armor_class: 1}
+      strong = %{durable_monster() | damage: "1d4"}
+      {:continue, updated_player, _, _} = Combat.end_turn(player, strong, always(4))
+      assert updated_player.hp == player.hp
     end
 
-    test "shield charge is consumed when absorbing a hit", %{warrior: warrior} do
-      w = %{warrior | shield_charges: 2}
-      {:continue, updated, _, _} = Combat.tick(w, durable_monster(), :attack, always(10))
-      assert updated.shield_charges == 1
-    end
-
-    test "without shield charges, warrior takes damage normally", %{warrior: warrior} do
-      # always(20) guarantees monster hits (roll 20 >= AC 16)
-      {result, updated, _, _} = Combat.tick(warrior, durable_monster(), :attack, always(20))
-      assert result in [:continue, :player_dead]
-      assert updated.hp < warrior.hp
-    end
-
-    test "log mentions shield absorbing when charge is consumed", %{warrior: warrior} do
-      w = %{warrior | shield_charges: 1}
-      {:continue, _, _, log} = Combat.tick(w, durable_monster(), :attack, always(10))
-      assert Enum.any?(log, &String.contains?(&1, "shield"))
+    test "block resets at end of turn" do
+      player = %{warrior() | block: 10}
+      {:continue, updated_player, _, _} = Combat.end_turn(player, durable_monster(), always(1))
+      assert updated_player.block == 0
     end
   end
 
   # ---------------------------------------------------------------------------
-  # Rogue — Combo
+  # Warrior — battle_cry (draw)
   # ---------------------------------------------------------------------------
 
-  describe "rogue combo" do
-    setup do
-      %{rogue: PlayerClass.new_player(:rogue, "Shadow")}
-    end
-
-    test "a hit increments combo", %{rogue: rogue} do
-      {:continue, updated, _, _} = Combat.tick(rogue, durable_monster(), :attack, always(10))
-      assert updated.combo == 1
-    end
-
-    test "consecutive hits stack combo", %{rogue: rogue} do
-      m = durable_monster()
-      {:continue, r1, _, _} = Combat.tick(rogue, m, :attack, always(10))
-      {:continue, r2, _, _} = Combat.tick(r1, m, :attack, always(10))
-      {:continue, r3, _, _} = Combat.tick(r2, m, :attack, always(10))
-      assert r3.combo == 3
-    end
-
-    test "a miss resets combo to 0", %{rogue: rogue} do
-      r = %{rogue | combo: 3}
-      # unhittable_monster has AC 100, always(1) guarantees miss
-      {:continue, updated, _, _} = Combat.tick(r, unhittable_monster(), :attack, always(1))
-      assert updated.combo == 0
-    end
-
-    test "defend resets combo to 0", %{rogue: rogue} do
-      r = %{rogue | combo: 2}
-      {:continue, updated, _, _} = Combat.tick(r, durable_monster(), :defend, always(1))
-      assert updated.combo == 0
-    end
-
-    test "finisher deals combo × 1d6 damage and resets combo", %{rogue: rogue} do
-      r = %{rogue | combo: 3}
-      m = durable_monster()
-      # always(3) → each d6 rolls 3 → 3 × 3 = 9 damage
-      {result, updated_r, updated_m, _log} = Combat.tick(r, m, :finisher, always(3))
-      assert result in [:continue, :monster_dead]
-      assert updated_r.combo == 0
-      assert updated_m.hp == m.hp - 3 * 3
-    end
-
-    test "finisher with 0 combo deals 0 damage", %{rogue: rogue} do
-      m = durable_monster()
-      {_result, _r, updated_m, _log} = Combat.tick(rogue, m, :finisher, always(6))
-      assert updated_m.hp == m.hp
+  describe "warrior battle_cry" do
+    test "draws 2 cards" do
+      player = warrior()
+      c = card(:warrior, :battle_cry)
+      # Ensure battle_cry is in hand (it's a reward card, not in starting deck)
+      player = %{player | hand: [c | player.hand]}
+      hand_before = length(player.hand)
+      {:alive, updated, _, _} = Combat.play_card(player, durable_monster(), c, always(1))
+      assert length(updated.hand) == hand_before + 2 - 1
     end
   end
 
   # ---------------------------------------------------------------------------
-  # Mage — Mana
+  # Rogue — backstab (damage + draw)
   # ---------------------------------------------------------------------------
 
-  describe "mage mana regen" do
-    setup do
-      %{mage: PlayerClass.new_player(:mage, "Gandalf")}
-    end
+  describe "rogue backstab" do
+    test "deals damage and draws 1 card" do
+      player = rogue()
+      hand_before = length(player.hand)
+      c = card(:rogue, :backstab)
 
-    test "mana regenerates by 1 at the start of each turn (when below max)", %{mage: mage} do
-      m = durable_monster()
-      depleted = %{mage | mana: 1}
-      {:continue, updated, _, _} = Combat.tick(depleted, m, :attack, always(1))
-      assert updated.mana == 2
-    end
+      {:alive, updated_player, updated_monster, _} =
+        Combat.play_card(player, durable_monster(), c, always(4))
 
-    test "mana does not exceed max_mana", %{mage: mage} do
-      m = durable_monster()
-      {:continue, updated, _, _} = Combat.tick(mage, m, :attack, always(1))
-      assert updated.mana <= mage.max_mana
+      assert updated_monster.hp < durable_monster().hp
+      assert length(updated_player.hand) == hand_before - 1 + 1
     end
   end
 
-  describe "mage fireball" do
-    setup do
-      %{mage: PlayerClass.new_player(:mage, "Gandalf")}
-    end
+  describe "rogue blade_dance" do
+    test "hits 3 times for 1d4 each" do
+      player = rogue()
+      c = card(:rogue, :blade_dance)
 
-    test "fireball ignores AC (auto-hit on unhittable monster)", %{mage: mage} do
-      m = unhittable_monster()
-      # normal attack would always miss; fireball should always hit
-      {_result, _mage, updated_m, _log} = Combat.tick(mage, m, :fireball, always(6))
-      assert updated_m.hp < m.hp
-    end
+      {:alive, _, updated_monster, log} =
+        Combat.play_card(player, durable_monster(), c, always(4))
 
-    test "fireball costs 2 mana", %{mage: mage} do
-      m = durable_monster()
-      {:continue, updated, _, _} = Combat.tick(mage, m, :fireball, always(4))
-      # started at max (3), regen is no-op, spent 2 → 1
-      assert updated.mana == mage.mana - 2
-    end
-
-    test "fireball deals 2d8 damage", %{mage: mage} do
-      m = durable_monster()
-      # always(5) → 2d8 = 5+5 = 10
-      {:continue, _, updated_m, _} = Combat.tick(mage, m, :fireball, always(5))
-      assert updated_m.hp == m.hp - 10
-    end
-
-    test "fireball is blocked when mana < 2", %{mage: mage} do
-      m = durable_monster()
-      # mana: 0 → regen brings to 1, still < 2, so fireball is blocked
-      broke = %{mage | mana: 0}
-      {:continue, _, updated_m, _} = Combat.tick(broke, m, :fireball, always(5))
-      # Should deal no damage (or fallback to basic attack — no change on miss)
-      # Exact behavior: fireball does nothing if insufficient mana
-      assert updated_m.hp >= m.hp - 4
+      assert durable_monster().hp - updated_monster.hp == 12
+      assert length(log) == 3
     end
   end
 
-  describe "mage frost nova" do
-    setup do
-      %{mage: PlayerClass.new_player(:mage, "Gandalf")}
+  describe "rogue evade" do
+    test "sets dodge_next on player" do
+      player = rogue()
+      c = card(:rogue, :evade)
+      {:alive, updated_player, _, _} = Combat.play_card(player, durable_monster(), c, always(1))
+      assert updated_player.dodge_next == true
     end
 
-    test "frost nova sets frost_nova_active on the player", %{mage: mage} do
-      m = durable_monster()
-      {:continue, updated_mage, _, _} = Combat.tick(mage, m, :frost_nova, always(3))
-      # frost_nova_active is consumed in the same tick's bonus phase, so after tick it's false
-      # But the monster should have taken half damage in the counter-attack
-      # The flag is set during act and consumed during bonus of the same tick
-      assert updated_mage.frost_nova_active == false
+    test "dodge_next causes monster attack to miss at end_turn" do
+      player = %{rogue() | armor_class: 1, dodge_next: true}
+      strong = %{durable_monster() | damage: "1d4"}
+      {:continue, updated_player, _, log} = Combat.end_turn(player, strong, always(20))
+      assert updated_player.hp == player.hp
+      assert Enum.any?(log, &String.contains?(&1, "dodge"))
+    end
+  end
+
+  describe "rogue finisher" do
+    test "deals 4d6 damage" do
+      player = rogue()
+      c = card(:rogue, :finisher)
+
+      {:alive, _, updated_monster, _} =
+        Combat.play_card(player, durable_monster(), c, always(6))
+
+      assert durable_monster().hp - updated_monster.hp == 24
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Mage — ignores AC
+  # ---------------------------------------------------------------------------
+
+  describe "mage arcane_bolt" do
+    test "deals damage ignoring AC" do
+      player = mage()
+      c = card(:mage, :arcane_bolt)
+
+      {:alive, _, updated_monster, _} =
+        Combat.play_card(player, unhittable_monster(), c, always(4))
+
+      assert updated_monster.hp < unhittable_monster().hp
+    end
+  end
+
+  describe "mage magic_missile" do
+    test "deals 1d4+1 damage ignoring AC" do
+      player = mage()
+      c = card(:mage, :magic_missile)
+
+      {:alive, _, updated_monster, _} =
+        Combat.play_card(player, unhittable_monster(), c, always(4))
+
+      assert unhittable_monster().hp - updated_monster.hp == 5
+    end
+  end
+
+  describe "mage frost_nova" do
+    test "deals damage and gains 5 block" do
+      player = mage()
+      c = card(:mage, :frost_nova)
+
+      {:alive, updated_player, updated_monster, _} =
+        Combat.play_card(player, durable_monster(), c, always(6))
+
+      assert updated_monster.hp < durable_monster().hp
+      assert updated_player.block == 5
+    end
+  end
+
+  describe "mage chain_lightning" do
+    test "deals 1d8 damage ignoring AC" do
+      player = mage()
+      c = card(:mage, :chain_lightning)
+
+      {:alive, _, updated_monster, _} =
+        Combat.play_card(player, unhittable_monster(), c, always(8))
+
+      assert unhittable_monster().hp - updated_monster.hp == 8
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Energy system
+  # ---------------------------------------------------------------------------
+
+  describe "energy" do
+    test "playing cards costs energy" do
+      player = warrior()
+      c = card(:warrior, :cleave)
+      {:alive, updated, _, _} = Combat.play_card(player, durable_monster(), c, always(6))
+      assert updated.energy == player.energy - c.cost
     end
 
-    test "frost nova costs 1 mana", %{mage: mage} do
-      m = durable_monster()
-      {:continue, updated, _, _} = Combat.tick(mage, m, :frost_nova, always(3))
-      # start 3, regen +1 (capped at 3), spend 1 → 2
-      assert updated.mana == 2
+    test "returns :alive with error when not enough energy" do
+      player = %{warrior() | energy: 0}
+      c = card(:warrior, :cleave)
+      {:alive, unchanged, _, log} = Combat.play_card(player, durable_monster(), c, always(6))
+      assert unchanged.energy == 0
+      assert Enum.any?(log, &String.contains?(&1, "energy"))
     end
 
-    test "frost nova deals 1d6 damage to monster", %{mage: mage} do
-      m = durable_monster()
-      # always(4) → 1d6 = 4
-      {:continue, _, updated_m, _} = Combat.tick(mage, m, :frost_nova, always(4))
-      assert updated_m.hp == m.hp - 4
+    test "energy resets to max at end of turn" do
+      player = %{warrior() | energy: 0}
+      {:continue, updated, _, _} = Combat.end_turn(player, durable_monster(), always(1))
+      assert updated.energy == player.max_energy
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Monster action types
+  # ---------------------------------------------------------------------------
+
+  describe "monster actions during end_turn" do
+    test "attack damages player" do
+      player = %{warrior() | armor_class: 1, block: 0}
+      strong = %{durable_monster() | damage: "1d4"}
+      # always(4): d20 roll=4 >= AC 1 (hit), d4 damage=4 — warrior survives (12-4=8)
+      {:continue, updated, _, _} = Combat.end_turn(player, strong, always(4))
+      assert updated.hp < player.hp
     end
 
-    test "frost nova halves incoming monster damage on the same turn", %{mage: mage} do
-      # Set up a mage with full HP, then compare damage taken vs normal
-      m = %{
-        durable_monster()
-        | next_action: %{name: "Attack", type: :attack, damage: "2d6", weight: 1}
-      }
+    test "ranged action always damages" do
+      monster =
+        %{
+          durable_monster()
+          | actions: [%{name: "Arrow", type: :ranged, damage: "1d4", weight: 1}],
+            next_action: nil
+        }
 
-      mage_full = %{mage | hp: mage.max_hp}
+      {:continue, updated, _, _} = Combat.end_turn(warrior(), monster, always(4))
+      assert updated.hp < warrior().hp
+    end
 
-      # With frost nova: should take half damage
-      {:continue, after_nova, _, _} = Combat.tick(mage_full, m, :frost_nova, always(6))
-      # Without frost nova (basic attack, same roller so monster also hits for max)
-      {:continue, after_attack, _, _} = Combat.tick(mage_full, m, :attack, always(6))
+    test "heal action restores monster HP" do
+      monster =
+        %{
+          durable_monster()
+          | hp: 5,
+            actions: [%{name: "Heal", type: :heal, amount: "1d4", weight: 1}],
+            next_action: nil
+        }
 
-      damage_with_nova = mage_full.hp - after_nova.hp
-      damage_without = mage_full.hp - after_attack.hp
+      {:continue, _, updated_monster, _} = Combat.end_turn(warrior(), monster, always(4))
+      assert updated_monster.hp > 5
+    end
 
-      # Frost nova damage should be less (halved)
-      # Note: frost nova also deals damage to the monster, so hp comparisons are valid
-      assert damage_with_nova <= damage_without
+    test "steal_potion takes a potion" do
+      monster =
+        %{
+          durable_monster()
+          | actions: [%{name: "Steal", type: :steal_potion, weight: 1}],
+            next_action: nil
+        }
+
+      player = %{warrior() | potions: 2, armor_class: 21}
+      {:continue, updated, _, _} = Combat.end_turn(player, monster, always(1))
+      assert updated.potions == 1
     end
   end
 end

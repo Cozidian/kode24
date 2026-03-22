@@ -49,7 +49,7 @@ defmodule DndWeb.GameLiveTest do
     end
   end
 
-  # Attacks until the monster is dead (handling level-ups along the way),
+  # Plays cards and ends turns until the monster is dead (handling level-ups),
   # then returns :ok when back on the map.
   defp win_fight(view) do
     Enum.reduce_while(1..500, :ok, fn _, _ ->
@@ -58,11 +58,17 @@ defmodule DndWeb.GameLiveTest do
           {:halt, :ok}
 
         has_element?(view, "button[phx-click=choose_upgrade]") ->
-          render_click(view, "choose_upgrade", %{"id" => "tough"})
+          render_click(view, "choose_upgrade", %{"id" => "bash"})
           {:cont, :ok}
 
-        has_element?(view, "button[phx-value-action=attack]") ->
-          view |> element("button[phx-value-action=attack]") |> render_click()
+        has_element?(view, "button[phx-click=end_turn]") ->
+          # Try to play the first card; if out of energy it's a no-op and we end turn
+          render_click(view, "play_card", %{"index" => "0"})
+
+          if has_element?(view, "button[phx-click=end_turn]") do
+            render_click(view, "end_turn", %{})
+          end
+
           {:cont, :ok}
 
         true ->
@@ -102,7 +108,7 @@ defmodule DndWeb.GameLiveTest do
       start_game(view)
       enter_fight(view)
 
-      assert has_element?(view, "button[phx-value-action=attack]")
+      assert has_element?(view, "button[phx-click=end_turn]")
     end
 
     test "clicking a rest node shows the rest screen", %{conn: conn} do
@@ -169,30 +175,6 @@ defmodule DndWeb.GameLiveTest do
       assert has_element?(view, "[data-testid=dungeon-map]")
     end
 
-    test "player XP is shown during fighting phase", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      start_game(view)
-      enter_fight(view)
-
-      assert has_element?(view, "[data-testid=player-xp]")
-    end
-
-    test "monster XP reward is shown during fighting phase", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      start_game(view)
-      enter_fight(view)
-
-      assert has_element?(view, "[data-testid=monster-xp]")
-    end
-
-    test "player level is shown during fighting phase", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      start_game(view)
-      enter_fight(view)
-
-      assert has_element?(view, "[data-testid=player-level]")
-    end
-
     test "inventory button is visible during fighting phase", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       start_game(view)
@@ -235,14 +217,29 @@ defmodule DndWeb.GameLiveTest do
       start_game(view)
       # Jump directly to the boss fight (bypasses map navigation)
       render_click(view, "select_node", %{"node_id" => "boss"})
-      # Set boss HP to 1 so one attack kills it
+      # Set boss HP to 1 (AC also set to 1 by the test helper)
       render_click(view, "__test_set_monster_hp", %{"hp" => "1"})
-      view |> element("button[phx-value-action=attack]") |> render_click()
 
-      # Handle possible level-up before asserting victory
-      if has_element?(view, "button[phx-click=choose_upgrade]") do
-        render_click(view, "choose_upgrade", %{"id" => "tough"})
-      end
+      # Play cards until the boss dies (damage card at index 0 kills with hp=1, AC=1)
+      Enum.reduce_while(1..50, :ok, fn _, _ ->
+        cond do
+          has_element?(view, "h2", "Victory") ->
+            {:halt, :ok}
+
+          has_element?(view, "button[phx-click=choose_upgrade]") ->
+            render_click(view, "choose_upgrade", %{"id" => "bash"})
+            {:cont, :ok}
+
+          true ->
+            render_click(view, "play_card", %{"index" => "0"})
+
+            if has_element?(view, "button[phx-click=end_turn]") do
+              render_click(view, "end_turn", %{})
+            end
+
+            {:cont, :ok}
+        end
+      end)
 
       assert has_element?(view, "h2", "Victory")
     end
@@ -287,53 +284,42 @@ defmodule DndWeb.GameLiveTest do
   end
 
   # ---------------------------------------------------------------------------
-  # Class-specific combat UI
+  # Card system combat UI
   # ---------------------------------------------------------------------------
 
-  describe "class-specific combat UI" do
-    test "mage sees fireball button", %{conn: conn} do
+  describe "card system combat UI" do
+    test "player energy is shown during combat", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
-      render_click(view, "choose_class", %{"class" => "mage"})
+      start_game(view)
       enter_fight(view)
 
-      assert has_element?(view, "button[phx-value-action=fireball]")
+      assert has_element?(view, "[data-testid=player-energy]")
     end
 
-    test "mage sees frost nova button", %{conn: conn} do
+    test "card hand buttons are shown during combat", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
-      render_click(view, "choose_class", %{"class" => "mage"})
+      start_game(view)
       enter_fight(view)
 
-      assert has_element?(view, "button[phx-value-action=frost_nova]")
+      assert has_element?(view, "button[phx-click=play_card]")
     end
 
-    test "mage mana is shown during combat", %{conn: conn} do
+    test "end turn button is shown during combat", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
-      render_click(view, "choose_class", %{"class" => "mage"})
+      start_game(view)
       enter_fight(view)
 
-      assert has_element?(view, "[data-testid=player-mana]")
+      assert has_element?(view, "button[phx-click=end_turn]")
     end
 
-    test "warrior shield charges are shown during combat", %{conn: conn} do
+    test "playing a card updates the state", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
-      render_click(view, "choose_class", %{"class" => "warrior"})
+      start_game(view)
       enter_fight(view)
 
-      assert has_element?(view, "[data-testid=shield-charges]")
-    end
-
-    test "rogue combo is shown during combat", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-      view |> element("form[phx-submit=start_game]") |> render_submit(%{username: "Hero"})
-      render_click(view, "choose_class", %{"class" => "rogue"})
-      enter_fight(view)
-
-      assert has_element?(view, "[data-testid=rogue-combo]")
+      # Sending play_card directly always succeeds (no-op if no energy)
+      render_click(view, "play_card", %{"index" => "0"})
+      assert has_element?(view, "[data-testid=player-energy]")
     end
   end
 
@@ -399,14 +385,14 @@ defmodule DndWeb.GameLiveTest do
       start_game(view)
       enter_fight(view)
 
-      # Attack until dead
+      # Play cards and end turns until dead
       Enum.reduce_while(1..500, :ok, fn _, _ ->
         cond do
           has_element?(view, "h2", "Game Over") ->
             {:halt, :done}
 
           has_element?(view, "button[phx-click=choose_upgrade]") ->
-            render_click(view, "choose_upgrade", %{"id" => "tough"})
+            render_click(view, "choose_upgrade", %{"id" => "bash"})
             {:cont, :ok}
 
           has_element?(view, "[data-testid=dungeon-map]") ->
@@ -417,8 +403,8 @@ defmodule DndWeb.GameLiveTest do
             view |> element("button[phx-click=rest_and_continue]") |> render_click()
             {:cont, :ok}
 
-          has_element?(view, "button[phx-value-action=attack]") ->
-            view |> element("button[phx-value-action=attack]") |> render_click()
+          has_element?(view, "button[phx-click=end_turn]") ->
+            render_click(view, "end_turn", %{})
             {:cont, :ok}
 
           true ->

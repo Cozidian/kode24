@@ -7,9 +7,9 @@ defmodule DungeonGame.PlayerClass do
   - **Mage** — glass cannon, spends Mana on powerful spells
   """
 
-  alias DungeonGame.Player
+  alias DungeonGame.{Card, Player}
 
-  defstruct [:id, :name, :description, :icon, :hp, :armor_class, :damage, :hit_die, :max_mana]
+  defstruct [:id, :name, :description, :icon, :hp, :armor_class, :damage, :hit_die]
 
   @doc "Returns the list of all available player classes."
   def all do
@@ -18,45 +18,45 @@ defmodule DungeonGame.PlayerClass do
         id: :warrior,
         name: "Warrior",
         description:
-          "Defend to build Shield Charges (max 3). Each charge absorbs one incoming hit.",
+          "A heavily armored fighter. Build block with Shield Up, then unleash Shield Slam.",
         icon: "⚔️",
-        hp: 12,
+        hp: 60,
         armor_class: 16,
         damage: "1d8",
-        hit_die: "1d10",
-        max_mana: 0
+        hit_die: "1d10"
       },
       %__MODULE__{
         id: :rogue,
         name: "Rogue",
-        description: "Each hit builds Combo. At 3+ Combo, unleash a Finisher for massive damage.",
+        description: "A nimble assassin. Overwhelm with cheap cards and devastating finishers.",
         icon: "🗡️",
-        hp: 8,
+        hp: 45,
         armor_class: 13,
         damage: "1d6",
-        hit_die: "1d6",
-        max_mana: 0
+        hit_die: "1d6"
       },
       %__MODULE__{
         id: :mage,
         name: "Mage",
         description:
-          "Spend Mana on Fireball (2✨, ignores AC) or Frost Nova (1✨, halves next hit).",
+          "A glass cannon. Arcane missiles and fireballs ignore armor — but you're fragile.",
         icon: "🔮",
-        hp: 6,
+        hp: 30,
         armor_class: 11,
         damage: "1d4",
-        hit_die: "1d4",
-        max_mana: 3
+        hit_die: "1d4"
       }
     ]
   end
 
   @doc """
   Creates a fresh `%Player{}` with stats set for `class_id` and the given `name`.
+  Deals the starting 5-card hand from the class deck.
   """
   def new_player(class_id, name) do
     class = Enum.find(all(), &(&1.id == class_id))
+    full_deck = Card.starting_deck(class_id)
+    {hand, deck} = Enum.split(full_deck, 5)
 
     %Player{
       name: name,
@@ -66,8 +66,13 @@ defmodule DungeonGame.PlayerClass do
       armor_class: class.armor_class,
       damage: class.damage,
       potions: 0,
-      mana: class.max_mana,
-      max_mana: class.max_mana
+      hand: hand,
+      deck: deck,
+      discard: [],
+      energy: 3,
+      max_energy: 3,
+      block: 0,
+      dodge_next: false
     }
   end
 end

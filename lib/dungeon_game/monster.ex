@@ -22,7 +22,7 @@ defmodule DungeonGame.Monster do
     - `:steal_potion` — steals a potion from the player (no direct damage)
   """
 
-  defstruct [:name, :hp, :max_hp, :damage, :armor_class, :actions, :next_action, xp: 0, gold: 5]
+  defstruct [:name, :hp, :max_hp, :damage, :armor_class, :actions, :next_action, gold: 5]
 
   @types [
     %{
@@ -30,7 +30,6 @@ defmodule DungeonGame.Monster do
       base_hp: 6,
       damage: "1d4",
       armor_class: 9,
-      xp: 10,
       gold: 5,
       actions: [
         %{name: "Scratch", type: :attack, weight: 3},
@@ -43,7 +42,6 @@ defmodule DungeonGame.Monster do
       base_hp: 25,
       damage: "1d8",
       armor_class: 11,
-      xp: 25,
       gold: 5,
       actions: [
         %{name: "Cleave", type: :attack, weight: 3},
@@ -56,7 +54,6 @@ defmodule DungeonGame.Monster do
       base_hp: 45,
       damage: "2d6",
       armor_class: 13,
-      xp: 50,
       gold: 5,
       actions: [
         %{name: "Slam", type: :attack, weight: 3},
@@ -69,7 +66,6 @@ defmodule DungeonGame.Monster do
       base_hp: 70,
       damage: "2d8",
       armor_class: 15,
-      xp: 100,
       gold: 5,
       actions: [
         %{name: "Claw Strike", type: :attack, weight: 3},
@@ -97,7 +93,6 @@ defmodule DungeonGame.Monster do
       armor_class: type.armor_class,
       actions: type.actions,
       next_action: pick_action(type.actions),
-      xp: type.xp,
       gold: type.gold
     }
   end

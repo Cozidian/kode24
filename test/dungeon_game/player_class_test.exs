@@ -1,7 +1,7 @@
 defmodule DungeonGame.PlayerClassTest do
   use ExUnit.Case, async: true
 
-  alias DungeonGame.{Player, PlayerClass}
+  alias DungeonGame.{Card, Player, PlayerClass}
 
   describe "all/0" do
     test "returns exactly 3 classes" do
@@ -29,9 +29,9 @@ defmodule DungeonGame.PlayerClassTest do
       assert p.class == :warrior
     end
 
-    test "starts with 12 HP", %{player: p} do
-      assert p.hp == 12
-      assert p.max_hp == 12
+    test "starts with 60 HP", %{player: p} do
+      assert p.hp == 60
+      assert p.max_hp == 60
     end
 
     test "starts with AC 16", %{player: p} do
@@ -46,13 +46,26 @@ defmodule DungeonGame.PlayerClassTest do
       assert p.potions == 0
     end
 
-    test "starts with 0 shield charges", %{player: p} do
-      assert p.shield_charges == 0
+    test "starts with 5 cards in hand", %{player: p} do
+      assert length(p.hand) == 5
     end
 
-    test "starts with 0 mana", %{player: p} do
-      assert p.mana == 0
-      assert p.max_mana == 0
+    test "starts with 5 cards remaining in deck", %{player: p} do
+      assert length(p.deck) == 5
+    end
+
+    test "starts with 3 energy", %{player: p} do
+      assert p.energy == 3
+      assert p.max_energy == 3
+    end
+
+    test "starts with 0 block", %{player: p} do
+      assert p.block == 0
+    end
+
+    test "hand cards are from warrior deck", %{player: p} do
+      warrior_ids = Card.starting_deck(:warrior) |> Enum.map(& &1.id) |> MapSet.new()
+      for card <- p.hand, do: assert(card.id in warrior_ids)
     end
   end
 
@@ -65,9 +78,9 @@ defmodule DungeonGame.PlayerClassTest do
       assert p.class == :rogue
     end
 
-    test "starts with 8 HP", %{player: p} do
-      assert p.hp == 8
-      assert p.max_hp == 8
+    test "starts with 45 HP", %{player: p} do
+      assert p.hp == 45
+      assert p.max_hp == 45
     end
 
     test "starts with AC 13", %{player: p} do
@@ -82,8 +95,8 @@ defmodule DungeonGame.PlayerClassTest do
       assert p.potions == 0
     end
 
-    test "starts with 0 combo", %{player: p} do
-      assert p.combo == 0
+    test "starts with 5 cards in hand", %{player: p} do
+      assert length(p.hand) == 5
     end
   end
 
@@ -96,9 +109,9 @@ defmodule DungeonGame.PlayerClassTest do
       assert p.class == :mage
     end
 
-    test "starts with 6 HP", %{player: p} do
-      assert p.hp == 6
-      assert p.max_hp == 6
+    test "starts with 30 HP", %{player: p} do
+      assert p.hp == 30
+      assert p.max_hp == 30
     end
 
     test "starts with AC 11", %{player: p} do
@@ -113,15 +126,31 @@ defmodule DungeonGame.PlayerClassTest do
       assert p.potions == 0
     end
 
-    test "starts with 3/3 mana", %{player: p} do
-      assert p.mana == 3
-      assert p.max_mana == 3
+    test "starts with 5 cards in hand", %{player: p} do
+      assert length(p.hand) == 5
+    end
+
+    test "hand cards are from mage deck", %{player: p} do
+      mage_ids = Card.starting_deck(:mage) |> Enum.map(& &1.id) |> MapSet.new()
+      for card <- p.hand, do: assert(card.id in mage_ids)
     end
   end
 
   describe "default Player struct" do
     test "potions default is 0" do
       assert %Player{}.potions == 0
+    end
+
+    test "hand default is empty list" do
+      assert %Player{}.hand == []
+    end
+
+    test "energy default is 0" do
+      assert %Player{}.energy == 0
+    end
+
+    test "block default is 0" do
+      assert %Player{}.block == 0
     end
   end
 end

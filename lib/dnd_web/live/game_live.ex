@@ -1,7 +1,7 @@
 defmodule DndWeb.GameLive do
   use DndWeb, :live_view
 
-  alias DungeonGame.{Combat, DungeonMap, Highscore, Monster, Player, PlayerClass, Upgrade}
+  alias DungeonGame.{Card, Combat, DungeonMap, Highscore, Monster, Player, PlayerClass}
   alias DndWeb.Portraits
 
   # ---------------------------------------------------------------------------
@@ -23,7 +23,8 @@ defmodule DndWeb.GameLive do
         pending_floor: 0,
         pending_name: nil,
         highscores: Highscore.list(),
-        show_qr: false
+        show_qr: false,
+        show_log: false
       )
 
     {:ok, socket, layout: false}
@@ -170,41 +171,27 @@ defmodule DndWeb.GameLive do
                 🛡️ AC:
                 <span class="text-white font-bold">{@player.armor_class + @player.bonus_ac}</span>
               </div>
-              <div data-testid="player-level" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
-                ⭐ Lvl: <span class="text-yellow-400 font-bold">{@player.level}</span>
-              </div>
-              <div data-testid="player-xp" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
-                ✨ XP: <span class="text-yellow-400 font-bold">{@player.xp}</span>
-                <span class="text-gray-500 hidden sm:inline ml-1">
-                  ({xp_to_next(@player)} to next)
-                </span>
-              </div>
-              <div
-                :if={@player.class == :warrior}
-                data-testid="shield-charges"
-                class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1"
-              >
-                🛡 Charges:
-                <span
-                  :for={i <- 1..3}
-                  class={if i <= @player.shield_charges, do: "text-yellow-400", else: "text-gray-600"}
-                >
-                  ●
-                </span>
+              <div data-testid="player-energy" class="mt-2">
+                <div class="text-xs text-gray-400 uppercase tracking-widest mb-1">⚡ Energy</div>
+                <div class="flex gap-1.5">
+                  <span
+                    :for={i <- 1..@player.max_energy}
+                    class={
+                      if i <= @player.energy,
+                        do: "text-yellow-400 text-2xl drop-shadow-[0_0_6px_#fbbf24]",
+                        else: "text-gray-700 text-2xl"
+                    }
+                  >
+                    ◆
+                  </span>
+                </div>
               </div>
               <div
-                :if={@player.class == :rogue}
-                data-testid="rogue-combo"
+                :if={@player.block > 0}
+                data-testid="player-block"
                 class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1"
               >
-                💥 Combo: <span class="text-orange-400 font-bold">{@player.combo}</span>
-              </div>
-              <div
-                :if={@player.class == :mage}
-                data-testid="player-mana"
-                class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1"
-              >
-                ✨ Mana: <span class="text-blue-400 font-bold">{@player.mana}/{@player.max_mana}</span>
+                🛡 Block: <span class="text-blue-400 font-bold">{@player.block}</span>
               </div>
             </div>
           </div>
@@ -226,9 +213,6 @@ defmodule DndWeb.GameLive do
               <div class="text-xs sm:text-sm text-gray-400 mt-1 sm:mt-2">
                 AC: <span class="text-white font-bold">{@monster.armor_class}</span>
               </div>
-              <div data-testid="monster-xp" class="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
-                ✨ XP: <span class="text-yellow-400 font-bold">{@monster.xp}</span>
-              </div>
               <div
                 :if={@phase == :fighting}
                 class="mt-3 rounded-xl bg-yellow-950/60 border border-yellow-700/50 px-3 py-2 text-sm"
@@ -239,83 +223,175 @@ defmodule DndWeb.GameLive do
                 <div class="text-yellow-200 font-semibold mt-0.5">
                   {intent_icon(@monster.next_action.type)} {@monster.next_action.name}
                 </div>
+                <div class="text-orange-300 text-xs mt-0.5 font-mono">
+                  {action_damage_text(@monster.next_action, @monster)}
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <%!-- Combat log --%>
-        <div class="bg-gray-800 rounded-2xl p-3 sm:p-6 shadow-xl">
-          <div class="text-xs sm:text-sm text-gray-400 uppercase tracking-widest mb-2 sm:mb-4">
-            Combat Log
-          </div>
-          <div class="space-y-1 sm:space-y-2 min-h-20 sm:min-h-32">
-            <p :for={entry <- @log} class="text-sm sm:text-lg text-gray-200 leading-snug">
+        <%!-- Combat log (collapsible) --%>
+        <div class="bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
+          <button
+            phx-click="toggle_log"
+            class="w-full flex items-center justify-between px-4 py-3 text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            <span class="text-xs uppercase tracking-widest font-bold">
+              📜 Combat Log
+              <span
+                :if={@log != []}
+                class="ml-2 text-gray-600 normal-case tracking-normal font-normal"
+              >
+                ({length(@log)} entries)
+              </span>
+            </span>
+            <span class="text-gray-500 text-sm">{if @show_log, do: "▲", else: "▼"}</span>
+          </button>
+          <div :if={@show_log} class="px-4 pb-4 space-y-1 border-t border-gray-700 pt-3">
+            <p :for={entry <- @log} class="text-sm text-gray-200 leading-snug">
               › {entry}
             </p>
           </div>
         </div>
 
-        <%!-- Action buttons --%>
-        <div :if={@phase == :fighting} class="flex flex-wrap gap-2 sm:gap-3 justify-center">
-          <button
-            phx-click="player_action"
-            phx-value-action="attack"
-            class="bg-red-700 hover:bg-red-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
-          >
-            ⚔️ Attack ({damage_label(@player)})
-          </button>
-          <button
-            :if={@player.class in [:warrior, :rogue]}
-            phx-click="player_action"
-            phx-value-action="defend"
-            class="bg-blue-700 hover:bg-blue-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
-          >
-            🛡️ {if @player.class == :warrior,
-              do: "Shield (#{@player.shield_charges}/3)",
-              else: "Defend"}
-          </button>
-          <button
-            :if={@player.class == :rogue and @player.combo >= 3}
-            phx-click="player_action"
-            phx-value-action="finisher"
-            class="bg-orange-600 hover:bg-orange-500 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
-          >
-            💥 Finisher ({@player.combo}×1d6)
-          </button>
-          <button
-            :if={@player.class == :mage}
-            phx-click="player_action"
-            phx-value-action="fireball"
-            disabled={@player.mana < 2}
-            class="bg-orange-700 hover:bg-orange-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
-          >
-            🔥 Fireball (2✨)
-          </button>
-          <button
-            :if={@player.class == :mage}
-            phx-click="player_action"
-            phx-value-action="frost_nova"
-            disabled={@player.mana < 1}
-            class="bg-cyan-700 hover:bg-cyan-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
-          >
-            ❄️ Frost Nova (1✨)
-          </button>
-          <button
-            phx-click="player_action"
-            phx-value-action="heal"
-            disabled={@player.potions == 0}
-            class="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
-          >
-            🧪 Heal ({@player.potions})
-          </button>
-          <button
-            phx-click="open_inventory"
-            class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 sm:py-5 px-4 sm:px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
-          >
-            🎒 Bag ({length(@player.inventory)})
-          </button>
+        <%!-- Card hand --%>
+        <div :if={@phase == :fighting} class="space-y-3">
+          <div class="flex flex-wrap gap-2 sm:gap-3 justify-center">
+            <button
+              :for={{card, i} <- Enum.with_index(@player.hand)}
+              phx-click="play_card"
+              phx-value-index={i}
+              disabled={card.cost > @player.energy}
+              class="bg-gray-800 border border-gray-600 hover:border-yellow-500 active:scale-95 text-white text-xs sm:text-sm py-3 px-3 rounded-2xl transition-all cursor-pointer shadow-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 flex flex-col items-center gap-1 min-w-[90px] max-w-[130px]"
+            >
+              <span class="text-yellow-400 text-lg">{card_icon(card.effect)}</span>
+              <span class="text-white font-bold text-center leading-tight">{card.name}</span>
+              <span class="text-gray-400 text-xs text-center leading-tight">{card.description}</span>
+              <span class="text-yellow-300 text-xs font-bold mt-1">
+                {if card.cost == 0, do: "Free", else: String.duplicate("◆", card.cost)}
+              </span>
+            </button>
+          </div>
+          <div class="flex gap-2 sm:gap-3 justify-center">
+            <button
+              phx-click="end_turn"
+              class="bg-blue-700 hover:bg-blue-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
+            >
+              ⏭ End Turn
+            </button>
+            <button
+              :if={@player.potions > 0}
+              phx-click="use_potion"
+              class="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
+            >
+              🧪 Potion ({@player.potions})
+            </button>
+            <button
+              phx-click="open_inventory"
+              class="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
+            >
+              🎒 Bag ({length(@player.inventory)})
+            </button>
+            <button
+              phx-click="open_deck"
+              class="bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-bold text-sm sm:text-xl py-4 px-6 rounded-2xl transition-all cursor-pointer shadow-lg"
+            >
+              🃏 Deck
+            </button>
+          </div>
+          <div class="text-center text-xs text-gray-600">
+            Hand: {length(@player.hand)} · Draw: {length(@player.deck)} · Discard: {length(
+              @player.discard
+            )}
+          </div>
         </div>
+      </div>
+
+      <%!-- Deck viewer --%>
+      <div :if={@phase == :deck_view} class="w-full max-w-4xl space-y-3 sm:space-y-6">
+        <div class="text-center">
+          <h2 class="text-2xl sm:text-4xl font-bold text-gray-300">🃏 Your Cards</h2>
+          <p class="text-gray-500 text-sm mt-1">
+            Hand: {length(@player.hand)} · Draw: {length(@player.deck)} · Discard: {length(
+              @player.discard
+            )}
+          </p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
+          <%!-- Hand --%>
+          <div class="bg-gray-800 rounded-2xl p-4 shadow-xl">
+            <div class="text-sm text-yellow-400 uppercase tracking-widest font-bold mb-3">
+              Hand ({length(@player.hand)})
+            </div>
+            <div :if={@player.hand == []} class="text-gray-500 italic text-sm">Empty</div>
+            <div class="space-y-2">
+              <div
+                :for={card <- @player.hand}
+                class="flex items-center gap-2 bg-gray-700 rounded-xl px-3 py-2"
+              >
+                <span class="text-lg">{card_icon(card.effect)}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-white font-bold text-sm truncate">{card.name}</div>
+                  <div class="text-gray-400 text-xs truncate">{card.description}</div>
+                </div>
+                <span class="text-yellow-300 text-xs font-bold shrink-0">
+                  {if card.cost == 0, do: "Free", else: String.duplicate("◆", card.cost)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <%!-- Draw pile --%>
+          <div class="bg-gray-800 rounded-2xl p-4 shadow-xl">
+            <div class="text-sm text-blue-400 uppercase tracking-widest font-bold mb-3">
+              Draw pile ({length(@player.deck)})
+            </div>
+            <div :if={@player.deck == []} class="text-gray-500 italic text-sm">Empty</div>
+            <div class="space-y-2">
+              <div
+                :for={card <- @player.deck}
+                class="flex items-center gap-2 bg-gray-700 rounded-xl px-3 py-2"
+              >
+                <span class="text-lg">{card_icon(card.effect)}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-white font-bold text-sm truncate">{card.name}</div>
+                  <div class="text-gray-400 text-xs truncate">{card.description}</div>
+                </div>
+                <span class="text-yellow-300 text-xs font-bold shrink-0">
+                  {if card.cost == 0, do: "Free", else: String.duplicate("◆", card.cost)}
+                </span>
+              </div>
+            </div>
+          </div>
+          <%!-- Discard pile --%>
+          <div class="bg-gray-800 rounded-2xl p-4 shadow-xl">
+            <div class="text-sm text-gray-400 uppercase tracking-widest font-bold mb-3">
+              Discard ({length(@player.discard)})
+            </div>
+            <div :if={@player.discard == []} class="text-gray-500 italic text-sm">Empty</div>
+            <div class="space-y-2">
+              <div
+                :for={card <- @player.discard}
+                class="flex items-center gap-2 bg-gray-700/60 rounded-xl px-3 py-2 opacity-70"
+              >
+                <span class="text-lg">{card_icon(card.effect)}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-white font-bold text-sm truncate">{card.name}</div>
+                  <div class="text-gray-400 text-xs truncate">{card.description}</div>
+                </div>
+                <span class="text-yellow-300 text-xs font-bold shrink-0">
+                  {if card.cost == 0, do: "Free", else: String.duplicate("◆", card.cost)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button
+          phx-click="close_deck"
+          class="w-full bg-gray-700 hover:bg-gray-600 active:scale-95 text-white font-bold text-xl py-4 rounded-2xl transition-all cursor-pointer shadow-lg"
+        >
+          ⚔️ Back to Battle
+        </button>
       </div>
 
       <%!-- Inventory screen --%>
@@ -442,30 +518,39 @@ defmodule DndWeb.GameLive do
         </button>
       </div>
 
-      <%!-- Level-up upgrade selection --%>
-      <div :if={@phase == :level_up} class="w-full max-w-4xl space-y-3 sm:space-y-6">
+      <%!-- Level-up card selection --%>
+      <div :if={@phase == :reward} class="w-full max-w-4xl space-y-3 sm:space-y-6">
         <div class="text-center">
-          <h2 class="text-2xl sm:text-4xl font-bold text-yellow-400">⭐ Level Up!</h2>
-          <p class="text-base sm:text-xl text-gray-300 mt-2">Choose an upgrade</p>
+          <h2 class="text-2xl sm:text-4xl font-bold text-yellow-400">🏆 Room Cleared!</h2>
+          <p class="text-base sm:text-xl text-gray-300 mt-2">Choose a card to add to your deck</p>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
           <div
-            :for={upgrade <- @upgrade_choices}
+            :for={card <- @upgrade_choices}
             class="bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-600 hover:border-yellow-500 transition-all flex flex-col"
           >
-            <div class="text-lg font-bold text-yellow-400 mb-1">
-              {upgrade_type_icon(upgrade.type)} {upgrade.name}
+            <div class="text-4xl text-center mb-2">{card_icon(card.effect)}</div>
+            <div class="text-lg font-bold text-yellow-400 text-center mb-1">{card.name}</div>
+            <div class="text-xs text-gray-500 uppercase tracking-widest text-center mb-3">
+              Cost: {if card.cost == 0, do: "Free", else: "#{card.cost} energy"}
             </div>
-            <div class="text-xs text-gray-500 uppercase tracking-widest mb-3">{upgrade.type}</div>
-            <p class="text-gray-200 text-sm flex-1">{upgrade.description}</p>
+            <p class="text-gray-200 text-sm flex-1">{card.description}</p>
             <button
               phx-click="choose_upgrade"
-              phx-value-id={upgrade.id}
+              phx-value-id={card.id}
               class="mt-4 w-full bg-yellow-500 hover:bg-yellow-400 active:scale-95 text-gray-950 font-bold py-2 rounded-xl transition-all cursor-pointer"
             >
-              Choose
+              Add to Deck
             </button>
           </div>
+        </div>
+        <div class="text-center">
+          <button
+            phx-click="skip_reward"
+            class="text-gray-500 hover:text-gray-300 text-sm underline transition-colors cursor-pointer"
+          >
+            Skip — I don't need a card
+          </button>
         </div>
       </div>
 
@@ -476,10 +561,7 @@ defmodule DndWeb.GameLive do
           <p class="text-xl text-gray-300 mb-2">
             You defeated the dungeon boss!
           </p>
-          <p class="text-gray-400">
-            {@player.name} — Level <span class="text-yellow-400 font-bold">{@player.level}</span>
-            — XP <span class="text-yellow-400 font-bold">{@player.xp}</span>
-          </p>
+          <p class="text-gray-400">{@player.name}</p>
         </div>
         <button
           phx-click="play_again"
@@ -647,6 +729,11 @@ defmodule DndWeb.GameLive do
   end
 
   @impl true
+  def handle_event("toggle_log", _params, socket) do
+    {:noreply, assign(socket, show_log: !socket.assigns.show_log)}
+  end
+
+  @impl true
   def handle_event("play_again", _params, socket) do
     {:noreply,
      assign(socket,
@@ -660,7 +747,8 @@ defmodule DndWeb.GameLive do
        upgrade_choices: [],
        pending_floor: 0,
        pending_name: nil,
-       highscores: Highscore.list()
+       highscores: Highscore.list(),
+       show_log: false
      )}
   end
 
@@ -706,10 +794,12 @@ defmodule DndWeb.GameLive do
 
       fight_type when fight_type in [:fight, :boss] ->
         monster = Monster.for_round(floor_to_round(node.floor))
+        player = reset_for_new_fight(player)
 
         {:noreply,
          assign(socket,
            phase: :fighting,
+           player: player,
            monster: monster,
            dungeon_map: map,
            current_floor: node.floor,
@@ -725,13 +815,33 @@ defmodule DndWeb.GameLive do
   end
 
   @impl true
-  def handle_event("player_action", %{"action" => action_str}, socket) do
-    action = String.to_atom(action_str)
+  def handle_event("play_card", %{"index" => idx_str}, socket) do
+    idx = String.to_integer(idx_str)
 
+    %{player: player, monster: monster, current_floor: floor, log: log} = socket.assigns
+
+    with card when not is_nil(card) <- Enum.at(player.hand, idx),
+         {:alive, new_player, new_monster, entries} <-
+           Combat.play_card(player, monster, card, &:rand.uniform/1, idx) do
+      {:noreply,
+       socket
+       |> assign(player: new_player, monster: new_monster)
+       |> put_log(log, entries)}
+    else
+      nil ->
+        {:noreply, socket}
+
+      {:monster_dead, new_player, _dead_monster, entries} ->
+        handle_monster_dead(socket, player, new_player, floor, log, entries)
+    end
+  end
+
+  @impl true
+  def handle_event("end_turn", _params, socket) do
     %{player: player, monster: monster, current_floor: floor, turn: turn, log: log} =
       socket.assigns
 
-    case Combat.tick(player, monster, action) do
+    case Combat.end_turn(player, monster) do
       {:continue, new_player, new_monster, entries} ->
         new_monster = %{new_monster | next_action: Monster.pick_action(new_monster.actions)}
 
@@ -739,37 +849,6 @@ defmodule DndWeb.GameLive do
          socket
          |> assign(player: new_player, monster: new_monster, turn: turn + 1)
          |> put_log(log, entries)}
-
-      {:monster_dead, new_player, _dead_monster, entries} ->
-        current_node = DungeonMap.current_node(socket.assigns.dungeon_map)
-
-        if new_player.level > player.level do
-          choices = Upgrade.random_choices(new_player, 3)
-          after_fight_phase = if current_node.type == :boss, do: :victory, else: :map
-
-          {:noreply,
-           socket
-           |> assign(
-             phase: :level_up,
-             player: new_player,
-             upgrade_choices: choices,
-             pending_floor: floor,
-             pending_phase: after_fight_phase
-           )
-           |> put_log(log, entries ++ ["⭐ Level #{new_player.level}! Choose an upgrade!"])}
-        else
-          if current_node.type == :boss do
-            {:noreply,
-             socket
-             |> assign(phase: :victory, player: new_player)
-             |> put_log(log, entries ++ ["🎉 You defeated the boss!"])}
-          else
-            {:noreply,
-             socket
-             |> assign(phase: :map, player: new_player, monster: nil)
-             |> put_log(log, entries)}
-          end
-        end
 
       {:player_dead, new_player, new_monster, entries} ->
         highscores = Highscore.add(new_player.name, floor + 1)
@@ -788,10 +867,37 @@ defmodule DndWeb.GameLive do
   end
 
   @impl true
+  def handle_event("use_potion", _params, socket) do
+    player = socket.assigns.player
+
+    if player.potions > 0 do
+      amount = :rand.uniform(4) + :rand.uniform(4)
+
+      new_player = %{
+        player
+        | hp: min(player.max_hp, player.hp + amount),
+          potions: player.potions - 1
+      }
+
+      {:noreply,
+       socket
+       |> assign(player: new_player)
+       |> put_log(socket.assigns.log, ["You drink a potion and recover #{amount} HP!"])}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("choose_upgrade", %{"id" => id_str}, socket) do
-    upgrade = Enum.find(Upgrade.all(), &(to_string(&1.id) == id_str))
-    player = Upgrade.apply(socket.assigns.player, upgrade)
+    player = socket.assigns.player
+    card = Enum.find(Card.all(player.class), &(to_string(&1.id) == id_str))
     after_phase = Map.get(socket.assigns, :pending_phase, :map)
+
+    player =
+      if card,
+        do: %{player | discard: [card | player.discard]},
+        else: player
 
     socket = assign(socket, player: player, upgrade_choices: [])
 
@@ -806,12 +912,34 @@ defmodule DndWeb.GameLive do
   end
 
   @impl true
+  def handle_event("skip_reward", _params, socket) do
+    after_phase = Map.get(socket.assigns, :pending_phase, :map)
+
+    socket =
+      if after_phase == :victory,
+        do: assign(socket, phase: :victory, upgrade_choices: []),
+        else: assign(socket, phase: :map, upgrade_choices: [])
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("open_inventory", _params, socket) do
     {:noreply, assign(socket, phase: :inventory)}
   end
 
   @impl true
   def handle_event("close_inventory", _params, socket) do
+    {:noreply, assign(socket, phase: :fighting)}
+  end
+
+  @impl true
+  def handle_event("open_deck", _params, socket) do
+    {:noreply, assign(socket, phase: :deck_view)}
+  end
+
+  @impl true
+  def handle_event("close_deck", _params, socket) do
     {:noreply, assign(socket, phase: :fighting)}
   end
 
@@ -842,6 +970,23 @@ defmodule DndWeb.GameLive do
   # Private helpers
   # ---------------------------------------------------------------------------
 
+  defp handle_monster_dead(socket, _old_player, new_player, floor, log, entries) do
+    current_node = DungeonMap.current_node(socket.assigns.dungeon_map)
+    after_fight_phase = if current_node.type == :boss, do: :victory, else: :map
+    choices = Card.reward_pool(new_player.class) |> Enum.shuffle() |> Enum.take(3)
+
+    {:noreply,
+     socket
+     |> assign(
+       phase: :reward,
+       player: new_player,
+       upgrade_choices: choices,
+       pending_floor: floor,
+       pending_phase: after_fight_phase
+     )
+     |> put_log(log, entries ++ ["Room cleared! Choose your reward."])}
+  end
+
   defp put_log(socket, current, new_entries) do
     log = (current ++ new_entries) |> Enum.take(-5)
     assign(socket, log: log)
@@ -850,17 +995,26 @@ defmodule DndWeb.GameLive do
   defp hp_pct(_hp, 0), do: 0
   defp hp_pct(hp, max_hp), do: trunc(hp / max_hp * 100)
 
-  defp damage_label(%{damage: dice, bonus_damage: 0}), do: dice
-  defp damage_label(%{damage: dice, bonus_damage: bonus}), do: "(#{dice})+#{bonus}"
+  defp card_icon({:damage, _}), do: "⚔️"
+  defp card_icon({:damage_nac, _}), do: "✨"
+  defp card_icon({:block, _}), do: "🛡"
+  defp card_icon({:damage_and_block, _, _}), do: "⚔🛡"
+  defp card_icon({:multi_hit, _, _}), do: "💥"
+  defp card_icon(:shield_slam), do: "🗡"
+  defp card_icon({:draw, _}), do: "📜"
+  defp card_icon(:dodge), do: "👤"
+  defp card_icon({:damage_and_draw, _, _}), do: "⚔📜"
+  defp card_icon({:dodge_and_draw, _}), do: "👤📜"
+  defp card_icon({:block_and_draw, _, _}), do: "🛡📜"
+  defp card_icon({:damage_nac_and_draw, _, _}), do: "✨📜"
+  defp card_icon(_), do: "🃏"
 
-  defp xp_to_next(%{level: level, xp: xp}) do
-    max(0, Player.xp_threshold(level + 1) - xp)
-  end
-
-  defp upgrade_type_icon(:attack), do: "⚔️"
-  defp upgrade_type_icon(:defend), do: "🛡️"
-  defp upgrade_type_icon(:heal), do: "🧪"
-  defp upgrade_type_icon(:passive), do: "✨"
+  defp action_damage_text(%{type: :attack}, monster), do: monster.damage
+  defp action_damage_text(%{type: :heavy_attack} = action, _), do: action.damage
+  defp action_damage_text(%{type: :ranged} = action, _), do: action.damage
+  defp action_damage_text(%{type: :heal} = action, _), do: "heals #{action.amount}"
+  defp action_damage_text(%{type: :steal_potion}, _), do: "steals a potion"
+  defp action_damage_text(_, _), do: ""
 
   defp intent_icon(:attack), do: "⚔️"
   defp intent_icon(:heavy_attack), do: "💥"
@@ -879,6 +1033,21 @@ defmodule DndWeb.GameLive do
   end
 
   defp rest_heal_amount(%{max_hp: max_hp}), do: max(1, trunc(max_hp * 0.3))
+
+  defp reset_for_new_fight(player) do
+    all_cards = player.hand ++ player.deck ++ player.discard
+    {hand, deck} = all_cards |> Enum.shuffle() |> Enum.split(5)
+
+    %{
+      player
+      | hand: hand,
+        deck: deck,
+        discard: [],
+        energy: player.max_energy,
+        block: 0,
+        dodge_next: false
+    }
+  end
 
   # SVG layout helpers — floor 5 (boss) at top (y=40), floor 0 at bottom (y=480)
   # Each floor is spaced 80px apart.
